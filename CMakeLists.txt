@@ -496,6 +496,11 @@ if(BUILD_VIEWER)
   add_subdirectory(media)
 endif()
 
+option(BUILD_SIXEL_VIEWER "Build the terminal SIXEL viewer" OFF)
+if(BUILD_SIXEL_VIEWER)
+  add_subdirectory(vncsixel)
+endif()
+
 add_subdirectory(tests)
 
 
