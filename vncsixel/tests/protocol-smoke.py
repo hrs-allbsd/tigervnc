@@ -86,6 +86,26 @@ def run_length(length):
     full, remainder = divmod(length - 1, 255)
     return b'\xff' * full + bytes([remainder])
 
+def displayed(color):
+    if args.colors == 8:
+        return bytes(255 if c >= 128 else 0 for c in color)
+    result = []
+    for channel, value in enumerate(color):
+        count = 4 if channel==2 else 8
+        level = min(range(count), key=lambda i: (abs(value-i*255//(count-1)), i))
+        palette = level*255//(count-1)
+        percent = (palette*100+127)//255
+        result.append((percent*255+50)//100)
+    return bytes(result)
+
+def alpha_wire(rgba):
+    # CursorWithAlpha uses premultiplied R,G,B,A, independent of SetPixelFormat.
+    result = bytearray()
+    for i in range(0,len(rgba),4):
+        r,g,b,a = rgba[i:i+4]
+        result.extend((r*a//255,g*a//255,b*a//255,a))
+    return struct.pack('!i',0)+result
+
 def compact(length):
     assert 0 <= length <= 0x3fffff
     result = bytearray([length & 127])
@@ -161,7 +181,11 @@ with tempfile.TemporaryDirectory() as directory, open(os.devnull, 'wb') as null:
                     x, y = position[0] - hotspot[0] + cx, position[1] - hotspot[1] + cy
                     color = cursor[(cy*cw+cx)*4:(cy*cw+cx+1)*4]
                     if 0 <= x < width and 0 <= y < height and color[3]:
-                        canvas[(y*720+x)*3:(y*720+x+1)*3] = color[:3]
+                        offset = (y*720+x)*3
+                        background = pixels[(y*width+x)*3:(y*width+x+1)*3]
+                        blended = [(foreground*color[3]+bg*(255-color[3]))//255
+                                   for foreground,bg in zip(color[:3],background)]
+                        canvas[offset:offset+3] = displayed(blended)
             return bytes(canvas)
         def verify(label):
             target = expected()
@@ -330,8 +354,31 @@ with tempfile.TemporaryDirectory() as directory, open(os.devnull, 'wb') as null:
         update('XCursor bitmap', [(3,2,9,7,-240,b'\xff\xff\0\0\0\0'+b'\xff\x80'*7+b'\xff\x80'*7)])
         cursor = b'\0\xff\0\xff' * 63
         update('CursorWithAlpha opaque', [(3,2,9,7,-314,struct.pack('!i',0)+b'\0\xff\0\xff'*63)])
+        backgrounds = [raw(360,40,40,40,red),raw(400,40,40,40,green),
+                       raw(360,80,40,40,blue),raw(400,80,40,40,white)]
+        position,hotspot,cursor_size = (400,80),(7,5),(15,11)
+        alphas = [0,1,64,127,128,192,254,255]
+        cursor = b''.join(colors[(x+y)%8]+bytes([alphas[x%8]]) for y in range(11) for x in range(15))
+        shape = cursor
+        update('alpha cursor over four backgrounds', backgrounds+
+            [(400,80,0,0,0x574d5666,b''),(7,5,15,11,-314,alpha_wire(cursor))])
+        position = (430,100)
+        update('alpha cursor move restores old background', [(430,100,0,0,0x574d5666,b'')])
+        update('alpha cursor recomposes changed background', [raw(415,90,25,20,black)])
+        for position,label in [((0,0),'top left'),((width-1,height-1),'bottom right')]:
+            update('alpha cursor clipping '+label, [(position[0],position[1],0,0,0x574d5666,b'')])
+        hotspot,cursor_size = (0,0),(17,13)
+        cursor = (b'\xff\0\0\x80')*17*13
+        update('alpha cursor shape and hotspot replacement', [(0,0,17,13,-314,alpha_wire(cursor))])
+        cursor = b'\0\0\0\0'*17*13
+        update('transparent cursor restores background', [(0,0,17,13,-314,alpha_wire(cursor))])
+        position = (400,80)
+        update('transparent cursor movement', [(400,80,0,0,0x574d5666,b'')])
         cursor, cursor_size = b'', (0,0)
         update('empty cursor erases old shape', [(0,0,0,0,-239,b'')])
+        position,hotspot,cursor_size,cursor = (320,214),(7,5),(15,11),shape
+        update('alpha cursor at resize boundary', [(320,214,0,0,0x574d5666,b''),
+            (7,5,15,11,-314,alpha_wire(cursor))])
         for nw, nh, encoding in [(323,217,-223),(677,463,-308),(599,431,-223)]:
             old, ow, oh = pixels, width, height
             pixels = bytearray(nw*nh*3)

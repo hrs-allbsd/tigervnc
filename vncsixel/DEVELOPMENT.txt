@@ -485,3 +485,13 @@ and package pass.  The staged viewer passes all 13 option cases, 41
 fragmented/JPEG display comparisons, 42 security cases, authentication
 and terminal negotiation.  Distribution changes are limited to the
 viewer options and docs; no upstream decoder modifications are needed.
+
+2026-11-15: Semitransparent cursor pixel coverage
+------------------------------------------------
+Nine new displayed states cover alpha 0/1/64/127/128/192/254/255 across
+four backgrounds, movement restoring old pixels, background repaint,
+clipping at both corners, shape/hotspot replacement, transparent cursors
+and a visible cursor across server shrink/grow.  The expectation model
+blends straight RGBA, then applies fixed-palette/SIXEL color conversion.
+Wire packets use premultiplied RGBA as required by rfbproto's Cursor With
+Alpha extension.  All 50 states including JPEG pass before optimization.

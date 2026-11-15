@@ -39,7 +39,7 @@ def run(case):
     with (args.report_dir / (name + '.log')).open('w') as log:
         subprocess.run(command, stdout=log, stderr=subprocess.STDOUT, check=True)
     result = json.loads(report.read_text())
-    assert len(result['checks']) == (41 if args.jpeg else 40), name
+    assert len(result['checks']) == (50 if args.jpeg else 49), name
     assert result['negotiated_format'] == [32,24,0,1,255,255,255,16,8,0], name
     return {'case': name, 'comparisons': len(result['checks']),
             'negotiated_format': result['negotiated_format']}
