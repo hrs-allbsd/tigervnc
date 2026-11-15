@@ -20,6 +20,7 @@ parser.add_argument('--credentials', type=Path, required=True)
 parser.add_argument('--report', type=Path, required=True)
 parser.add_argument('--seconds', type=int, default=20)
 parser.add_argument('--geometry', default='160x50')
+parser.add_argument('--viewer-option', action='append', default=[])
 args = parser.parse_args()
 if args.seconds < 1:
     parser.error('--seconds must be positive')
@@ -40,7 +41,7 @@ os.environ['VNC_PASSWORD'] = values['vnc pass']
 Path(sys.argv[4]).write_text(str(os.getpid()))
 null = os.open(os.devnull, os.O_WRONLY)
 os.dup2(null, 1); os.dup2(null, 2); os.close(null)
-os.execv(sys.argv[1], [sys.argv[1], '-ViewOnly', '-PerfLog=' + sys.argv[3], values['vnc host']])
+os.execv(sys.argv[1], [sys.argv[1], '-ViewOnly', '-PerfLog=' + sys.argv[3], *sys.argv[5:], values['vnc host']])
 '''
 processes = []
 viewer_pid = None
@@ -58,7 +59,7 @@ with tempfile.TemporaryDirectory() as directory, open(os.devnull, 'wb') as null:
         terminal = subprocess.Popen(['xterm', '-ti', 'vt340', '-geometry', args.geometry,
             '-fa', 'monospace', '-xrm', 'XTerm*allowSendEvents: false',
             '-e', 'python3', '-c', launcher, str(args.viewer.resolve()),
-            str(args.credentials.resolve()), str(args.report.resolve()), str(pidfile)],
+            str(args.credentials.resolve()), str(args.report.resolve()), str(pidfile), *args.viewer_option],
             env=dict(os.environ, DISPLAY=display), stdout=null, stderr=null)
         processes.append(terminal)
         deadline = time.monotonic() + 10

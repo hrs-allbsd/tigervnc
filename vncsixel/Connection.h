@@ -7,6 +7,7 @@
 #include <rfb/CConnection.h>
 #include <network/TcpSocket.h>
 #include <memory>
+#include <vector>
 
 namespace sixelvnc {
 class Connection : public rfb::CConnection {
@@ -18,7 +19,7 @@ public:
 	void render();
 	bool input(const InputEvent&);
 	void releaseInput();
-	void redraw() { dirty = true; }
+	void redraw() { dirty = forceFull = true; }
 	int displayWidth = 0, displayHeight = 0;
 	bool ready = false;
 private:
@@ -38,7 +39,8 @@ private:
 	std::unique_ptr<network::TcpSocket> socket;
 	Terminal& terminal;
 	bool dirty = false, updating = false;
-	bool prefix = false;
+	bool prefix = false, forceFull = true;
+	std::vector<uint8_t> previousFrame;
 	unsigned latched = 0, held = 0, mouseMods = 0;
 	uint16_t buttons = 0;
 	core::Point pointer = {0, 0};

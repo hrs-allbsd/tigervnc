@@ -2,6 +2,7 @@
 #include "Connection.h"
 #include "Framebuffer.h"
 #include "Palette.h"
+#include "Damage.h"
 #include <rfb/PixelBuffer.h>
 #include <rfb/obfuscate.h>
 #include <core/Configuration.h>
@@ -26,6 +27,7 @@ namespace {
 core::StringParameter passwordFile("PasswordFile",
     "Password file for VNC authentication", "");
 core::AliasParameter passwd("passwd", &passwordFile);
+core::BoolParameter fullFrame("FullFrame", "Disable partial screen updates", false);
 core::BoolParameter sharedSession("Shared", "Request a shared VNC session", true);
 core::BoolParameter viewOnly("ViewOnly", "Do not send remote input", false);
 }
@@ -78,6 +80,7 @@ void Connection::resizeFramebuffer()
 	uint32_t black = 0;
 	fb->fillRect(fb->getRect(), &black);
 	setFramebuffer(fb);
+	forceFull = true;
 	dirty = true;
 }
 void Connection::framebufferUpdateStart()
@@ -202,6 +205,22 @@ void Connection::render()
 	std::vector<uint8_t> indexed(static_cast<size_t>(displayWidth) * displayHeight);
 	for (size_t i = 0; i < indexed.size(); i++)
 		indexed[i] = rgb332(rgb[i * 3], rgb[i * 3 + 1], rgb[i * 3 + 2]);
+	DamageRect rect = damage(previousFrame, indexed, displayWidth,
+	    displayHeight, terminal.cellWidth, terminal.cellHeight,
+	    fullFrame || forceFull || displayWidth != oldWidth ||
+	    displayHeight != oldHeight);
+	if (!rect.width) {
+		performance.snapshotMs += std::chrono::duration<double, std::milli>(
+		    std::chrono::steady_clock::now() - snapshotStart).count();
+		performance.skipped++;
+		dirty = false;
+		return;
+	}
+	std::vector<uint8_t> region(static_cast<size_t>(rect.width) * rect.height);
+	for (int y = 0; y < rect.height; y++)
+		std::copy_n(indexed.data() + static_cast<size_t>(rect.y + y) *
+		    displayWidth + rect.x, rect.width,
+		    region.data() + static_cast<size_t>(y) * rect.width);
 	performance.remoteWidth = rw;
 	performance.remoteHeight = rh;
 	performance.width = displayWidth;
@@ -228,7 +247,7 @@ void Connection::render()
 	sixel_dither_set_pixelformat(dither, SIXEL_PIXELFORMAT_PAL8);
 	sixel_dither_set_diffusion_type(dither, SIXEL_DIFFUSE_NONE);
 	sixel_dither_set_body_only(dither, 0);
-	SIXELSTATUS result = sixel_encode(indexed.data(), displayWidth, displayHeight, 1, dither, output);
+	SIXELSTATUS result = sixel_encode(region.data(), rect.width, rect.height, 1, dither, output);
 	sixel_dither_unref(dither);
 	sixel_output_unref(output);
 	if (SIXEL_FAILED(result) || encoded.failed)
@@ -241,7 +260,15 @@ void Connection::render()
 	performance.encodedBytes += encoded.bytes.size();
 	if (displayWidth != oldWidth || displayHeight != oldHeight)
 		terminal.queue("\033[H\033[2J");
-	terminal.queue("\033[H" + encoded.bytes);
+	terminal.queue("\033[" + std::to_string(rect.y / terminal.cellHeight + 1) +
+	    ";" + std::to_string(rect.x / terminal.cellWidth + 1) + "H" + encoded.bytes);
+	previousFrame.swap(indexed);
+	forceFull = false;
+	performance.encodedPixels += static_cast<uint64_t>(rect.width) * rect.height;
+	if (rect.width == displayWidth && rect.height == displayHeight)
+		performance.fullFrames++;
+	else
+		performance.partialFrames++;
 	status();
 	dirty = false;
 }
@@ -289,18 +316,18 @@ bool Connection::input(const InputEvent& e)
 		if (e.kind == InputEvent::Key && prefix) {
 			prefix = false;
 			if (e.key == 'q') return false;
-			if (e.key == 'r') dirty = true;
+			if (e.key == 'r') redraw();
 		} else if (e.kind == InputEvent::Key && e.key == ']' &&
 		    (e.modifiers & 4)) prefix = true;
 		return true;
 	}
 	if (e.kind == InputEvent::FocusOut) { releaseInput(); status(); return true; }
-	if (e.kind == InputEvent::Refresh) { dirty = true; return true; }
+	if (e.kind == InputEvent::Refresh) { redraw(); return true; }
 	if (e.kind == InputEvent::Key) {
 		if (prefix) {
 			prefix = false;
 			if (e.key == 'q') return false;
-			if (e.key == 'r') { dirty = true; return true; }
+			if (e.key == 'r') { redraw(); return true; }
 			if (e.key == 'u') releaseInput();
 			else if (e.key == 'c') latched ^= 4;
 			else if (e.key == 'a') latched ^= 2;

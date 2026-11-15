@@ -54,7 +54,9 @@ prefixes; control characters other than formatting are discarded.
 
 The display fits without enlargement, preserving aspect ratio.  It uses
 nearest-neighbor sampling, a fixed 256-color RGB332 palette, and at most
-ten full-screen redraws per second.  Cursor pixels are composited onto a
+ten redraws per second.  Changed pixels are enclosed in a rectangle
+aligned to character cells and SIXEL bands; unchanged output is skipped.
+Use -FullFrame for the original full-screen fallback.  Cursor pixels are composited onto a
 snapshot; the RFB framebuffer remains intact.  All RFB updates, including
 CopyRect, are decoded even when terminal redraws are skipped.
 
@@ -80,8 +82,9 @@ server is used.  Existing package installations are not modified.
 
 Current limits and follow-up work:
 
-* Full-screen output is the correctness baseline.  Dirty-tile output and
-  adaptive palette/performance optimization remain follow-up work.
+* Partial output uses one bounding rectangle of changes in the displayed
+  fixed-palette snapshot.  Multiple independent tiles and adaptive palette
+  remain follow-up work.  Forced redraw and resize always repaint in full.
 * Framebuffers are limited to 64M pixels (256 MiB per 32-bit buffer),
   allowing 6K and 8K desktops.  Total memory usage can be higher, especially
   during resize when old and new buffers coexist.  Encoded output is limited
@@ -143,3 +146,14 @@ An idle server sample does not measure interactive workload performance.
 The fixed RGB332 palette is quantized once per displayed pixel and passed
 to libsixel as PAL8, avoiding repeated RGB-to-palette searches inside the
 encoder.  This preserves the fixed palette and disables diffusion.
+
+Partial update verification:
+
+  python3 vncsixel/tests/damage-smoke.py /path/to/vncsixel \
+      --records /private/damage-test
+
+A deterministic raw-RFB server checks partial/full pixel equality in xterm
+for black-text erasure, adjacent colors, and the final lower-right band.
+The vertical origin uses lcm(cell height, 6), including 13-pixel cells.
+Every DCS includes its palette.  Only the last queued snapshot is cached;
+new snapshots wait until the current output queue is completely drained.

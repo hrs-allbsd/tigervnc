@@ -29,6 +29,7 @@ int main(int argc, char** argv)
 		    "-PasswordFile file (alias -passwd): vncpasswd-format file.\n"
 		    "VNC_USERNAME and VNC_PASSWORD: same environment as vncviewer.\n"
 		    "-ViewOnly: suppress remote input; -Shared=0: exclusive session.\n"
+		    "-FullFrame: disable partial updates for comparison or fallback.\n"
 		    "-PerfLog file: numeric performance summary in JSON.\n"
 		    "Run in xterm -ti vt340 with allowSendEvents:false.\n"
 		    "Ctrl+] then q quits; c/a/s latch modifiers; u releases input.\n"
