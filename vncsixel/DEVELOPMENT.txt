@@ -147,3 +147,18 @@ missing WINDOWID, and servers without a cursor shape.  The remote cursor
 is also checked in the rendered image.  ViewOnly intentionally leaves
 the native pointer visible.  X11 access and WINDOWID are required;
 remote SSH sessions without them retain the terminal pointer.
+
+Validation after the local pointer change:
+- Backend enabled and disabled: 29 frontend tests each.
+- Authentication, terminal negotiation, and 6K xterm integration pass.
+- 100 local input-to-image samples at MaxFPS=30: median=6.225ms,
+  p95=16.872ms, maximum=32.207ms.  This is a regression observation,
+  not a controlled comparison against the earlier timing run.
+- Real server, shared ViewOnly, 20.067s: 136 updates, 64 frames,
+  494115 SIXEL bytes, CPU=1.733s, RSS=149300 KiB.
+  No remote input or live-server image was captured.  Native pointer
+  behavior was checked against the private local cursor fixture.
+- Port revision 5 builds at nice 20, passes check-plist and stage-qa;
+  staged binary passes native pointer, authentication and terminal tests.
+  HOSTCURSOR defaults on and declares X11/Xfixes runtime dependencies.
+  The GitHub snapshot remains fixed; patches contain unpublished changes.
