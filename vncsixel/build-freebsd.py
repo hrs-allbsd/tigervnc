@@ -40,7 +40,7 @@ else:
 if args.test:
     cmd.append('-DCMAKE_REQUIRE_FIND_PACKAGE_GTest=ON')
 subprocess.run(cmd, check=True)
-targets = ['vncsixel'] + (['vncsixel-input-tests'] if args.test else [])
+targets = ['vncsixel'] + (['vncsixel-input-tests', 'vncsixel-memory-tests'] if args.test else [])
 subprocess.run(['cmake', '--build', str(build), '--parallel', str(args.jobs),
                 '--target', *targets], check=True)
 if args.test:

@@ -575,3 +575,29 @@ Real WAN behavior, remote-application input and multi-hour/RSS investigation
 remain open.  Reproduction commands are in README.txt; reports are in
 records/delayed-latency/, delayed-soak.json, viewonly-soak.json and
 soak-summary.json in the project directory.
+
+2026-11-15: Separate allocator usage from process RSS
+--------------------------------------------------
+Optional MemoryLog records refreshed FreeBSD jemalloc counters without
+addresses, screen data or connection information.  Three regression tests
+cover periodic/final samples without PerfLog, disabled logging and an
+unwritable destination.  All 46 frontend C++ tests pass at build nice 20.
+
+Two concurrent 180-second xterm regressions record five-second samples.
+The local delayed-input run receives all 1768 key events (882 measured
+responses plus two warmups).  Between 30 seconds and the last periodic
+sample, live allocated bytes range 3102064..3133608, ending 17576 bytes
+above the first sample.  This is a small variation over this interval.
+
+The passive shared/ViewOnly real-server run processes 1312 updates and
+550 frames.  Between 30 and 175 seconds, allocated bytes range
+129728320..140041440, ending 8725344 bytes higher.  Allocator resident
+bytes also increase.  This run therefore does not support attributing the
+RSS increase solely to allocator retention.  Live allocations fluctuate;
+the growing allocation site and whether growth eventually plateaus remain
+unresolved.  No leak fix or multi-hour stability claim is made.
+
+Reports: records/memory-local.json{,l} and memory-real.json{,l} in the
+project directory.  Concurrent workload and diagnostic sampling can affect
+timing.  Next work is to isolate the real-server allocation growth under
+repeatable framebuffer/encoding workloads before changing memory policy.

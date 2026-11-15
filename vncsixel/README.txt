@@ -560,3 +560,25 @@ warmup (default interval one second, adjustable with --rss-interval).
 It retains shared/ViewOnly operation in its private xterm.  Synthetic keys are
 injected only into the private local fixture.  Short regressions
 do not establish multi-hour memory stability or remote-application latency.
+
+Optional allocator diagnostics (FreeBSD)
+---------------------------------------
+Use -MemoryLog=/private/memory.jsonl to write numeric JSON lines at startup,
+every MemoryLogInterval seconds (default 5, range 1..3600), and shutdown.
+It works independently of PerfLog and is disabled by default.  Sampling
+runs at connection-processing boundaries; busy work can delay a sample.
+FreeBSD jemalloc statistics are refreshed through mallctl("epoch").
+allocated_bytes measures live allocations; active_bytes measures active
+pages.  resident_bytes, mapped_bytes and retained_bytes describe allocator
+storage, not process RSS.  allocator_error is zero on success; unavailable
+statistics produce an error number and omit byte counters.  Other systems
+report ENOTSUP.  No addresses, screen pixels or credentials are recorded.
+A requested destination that cannot be opened aborts startup.
+
+For real-server-perf.py or input-latency.py, add:
+  --viewer-option=-MemoryLog=/private/memory.jsonl \
+  --viewer-option=-MemoryLogInterval=5
+
+Exclude startup and the final teardown sample from steady-state analysis.
+Short samples cannot prove absence of leaks; compare allocator samples
+with RSS and repeat under controlled workloads before changing allocation.

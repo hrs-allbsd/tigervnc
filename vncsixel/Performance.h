@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 #ifndef VNCSIXEL_PERFORMANCE_H
 #define VNCSIXEL_PERFORMANCE_H
+#include "MemoryLog.h"
 #include <chrono>
 #include <cstdint>
 #include <cstdio>
@@ -10,6 +11,7 @@ class Performance {
 public:
 	Performance();
 	~Performance();
+	void sampleMemory() { memory.sample(updates, frames); }
 	uint64_t updates = 0, frames = 0, encodedBytes = 0, skipped = 0;
 	uint64_t regions = 0, fullFrames = 0, partialFrames = 0, encodedPixels = 0;
 	uint64_t cursorSamples = 0;
@@ -20,6 +22,7 @@ private:
 	FILE* file = nullptr;
 	std::chrono::steady_clock::time_point start;
 	double initialCpu = 0;
+	MemoryLog memory;
 };
 }
 #endif

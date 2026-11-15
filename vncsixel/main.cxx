@@ -60,6 +60,7 @@ int main(int argc, char** argv)
 		    "-EscapeTimeout 1..1000: Escape sequence wait in ms (default 50).\n"
 		    "-PasteRate 1..10000: pasted characters/s (default 200).\n"
 		    "-PerfLog file: numeric performance summary in JSON.\n"
+		    "-MemoryLog file: allocator JSONL; -MemoryLogInterval 1..3600 seconds.\n"
 		    "Run in xterm -ti vt340 with allowSendEvents:false.\n"
 		    "Ctrl+] then h shows help; q quits; c/a/s latch; u releases input.\n"
 		    "See vncsixel/README.txt for build and terminal settings.");

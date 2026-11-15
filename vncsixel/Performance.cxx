@@ -28,6 +28,7 @@ Performance::Performance() : start(std::chrono::steady_clock::now())
 }
 Performance::~Performance()
 {
+	memory.sample(updates, frames, true);
 	if (!file) return;
 	rusage usage = {};
 	getrusage(RUSAGE_SELF, &usage);
