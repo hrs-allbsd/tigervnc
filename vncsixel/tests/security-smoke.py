@@ -4,6 +4,7 @@
 Temporary keys, certificates, passwords and trust stores never leave the fixture.
 """
 import argparse
+from datetime import datetime, timezone
 import fcntl
 import json
 import os
@@ -16,6 +17,7 @@ import subprocess
 import tempfile
 import termios
 import time
+import threading
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('viewer',type=Path)
@@ -104,6 +106,33 @@ with tempfile.TemporaryDirectory() as directory, open(os.devnull,'wb') as null:
                     except ProcessLookupError:pass
                 viewer.kill();viewer.wait()
             os.close(master);os.close(slave)
+    def expire_in_handshake(port,deadline):
+        # Hold the first ClientHello after CRL import, then let TLS finish.
+        listener=socket.socket()
+        listener.bind(('127.0.0.1',0));listener.listen(1);listener.settimeout(10)
+        proxyport=listener.getsockname()[1]
+        stop=threading.Event();observed=[];errors=[]
+        def forward():
+            tail=b''
+            try:
+                with listener.accept()[0] as downstream, socket.create_connection(('127.0.0.1',port),10) as upstream:
+                    while not stop.is_set():
+                        readable,_,_=select.select([downstream,upstream],[],[],.1)
+                        for source in readable:
+                            chunk=source.recv(65536)
+                            if not chunk:return
+                            if source is downstream:
+                                if not observed and b'\x16\x03' in tail+chunk:
+                                    observed.append(time.time())
+                                    if stop.wait(max(0,deadline-time.time()+1)):return
+                                tail=chunk[-1:]
+                            (upstream if source is downstream else downstream).sendall(chunk)
+            except (ConnectionResetError,BrokenPipeError):
+                pass
+            except Exception as error:
+                if not stop.is_set():errors.append(str(error))
+        thread=threading.Thread(target=forward,daemon=True);thread.start()
+        return proxyport,stop,thread,listener,observed,errors
     store=root/'known_hosts'
     options=['-KnownHosts='+str(store)]
     server,port=start('RA2_256')
@@ -219,6 +248,20 @@ subjectAltName = DNS:localhost
                     run(crl+' CRL rejected','X509Vnc',port,
                         ['-X509CA='+str(root/'ca.crt'),'-X509CRL='+str(root/(crl+'.crl'))],
                         accepted=False,expected=diagnostic)
+                deadline=int(time.time())+8
+                nextupdate=datetime.fromtimestamp(deadline,timezone.utc).strftime('%Y%m%d%H%M%SZ')
+                subprocess.run([*ca,'-gencrl','-crl_nextupdate',nextupdate,
+                    '-out',str(root/'short.crl')],stdout=null,stderr=null,check=True)
+                proxyport,stop,thread,listener,observed,errors=expire_in_handshake(port,deadline)
+                try:
+                    run('CRL expires during TLS handshake','X509Vnc',proxyport,
+                        ['-X509CA='+str(root/'ca.crt'),'-X509CRL='+str(root/'short.crl')],
+                        accepted=False,expected='X509CRL has expired')
+                    assert observed and observed[0]<deadline,'ClientHello must precede CRL expiry'
+                    assert not errors,errors
+                finally:
+                    stop.set();listener.close();thread.join(timeout=11)
+                    assert not thread.is_alive(),'TLS proxy did not stop'
                 run('revoked leaf rejected','X509Vnc',port,['-X509CA='+str(root/'ca.crt'),'-X509CRL='+str(root/'revoked.crl')],accepted=False)
                 for filename in ('missing.crl','invalid.crl','zero.crl'):
                     run(filename+' rejected','X509Vnc',port,['-X509CA='+str(root/'ca.crt'),'-X509CRL='+str(root/filename)],accepted=False,expected='Cannot load specified X509CRL file')
