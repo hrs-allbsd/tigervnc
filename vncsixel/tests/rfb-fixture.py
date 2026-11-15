@@ -8,10 +8,13 @@ import time
 
 
 class Server:
-    def __init__(self, width=599, height=431, on_key=None, textured=False, cursor=False):
+    def __init__(self, width=599, height=431, on_key=None, textured=False, cursor=False, server_format=None):
         self.width, self.height = width, height
         self.on_key = on_key
         self.cursor = cursor
+        self.server_format = server_format or (32, 24, 0, 1, 255, 255, 255, 16, 8, 0)
+        self.client_format = None
+        self.encodings = set()
         self.key_events = []
         self.requested = False
         self.listener = socket.socket()
@@ -29,7 +32,7 @@ class Server:
                          (c >> 5) * 255 // 7, 0))
         for y in range(12):
             initial[y * width * 4:(y * width + 12) * 4] = b'\xff\0\0\0' * 12
-        self.pending = [(0, 0, width, height, bytes(initial))]
+        self.pending = [(0, 0, width, height, 0, bytes(initial))]
         self.sent = 0
         self.error = None
         self.closed = False
@@ -44,6 +47,10 @@ class Server:
     def update_rects(self, rectangles):
         for x, y, width, height, pixels in rectangles:
             assert len(pixels) == width * height * 4
+        self.update_encoded([(x, y, w, h, 0, data) for x, y, w, h, data in rectangles])
+
+    def update_encoded(self, rectangles):
+        """Queue already encoded RFB rectangles, including pseudo encodings."""
         with self.condition:
             assert self.pending is None
             self.pending = rectangles
@@ -72,15 +79,15 @@ class Server:
             assert receive(1) == b'\x01', 'client did not request shared access'
             name = b'Deterministic renderer fixture'
             conn.sendall(struct.pack('!HHBBBBHHHBBB3xI', self.width, self.height,
-                32, 24, 0, 1, 255, 255, 255, 16, 8, 0, len(name)) + name)
+                *self.server_format, len(name)) + name)
             while not self.closed:
                 with self.condition:
                     if self.requested and self.pending is not None:
                         cursor = (struct.pack('!HHHHi', 0, 0, 8, 8, -239) +
                             b'\xff\0\xff\0' * 64 + b'\xff' * 8) if self.cursor and not self.sent else b''
                         packet = struct.pack('!BBH', 0, 0, len(self.pending) + bool(cursor)) + cursor
-                        for x, y, w, h, data in self.pending:
-                            packet += struct.pack('!HHHHi', x, y, w, h, 0) + data
+                        for x, y, w, h, encoding, data in self.pending:
+                            packet += struct.pack('!HHHHi', x, y, w, h, encoding) + data
                         conn.sendall(packet)
                         self.pending = None
                         self.requested = False
@@ -90,10 +97,11 @@ class Server:
                     continue
                 message = receive(1)[0]
                 if message == 0:
-                    receive(19)  # SetPixelFormat
+                    self.client_format = struct.unpack('!BBBBHHHBBB3x', receive(19)[3:])
+                    assert self.client_format == (32, 24, 0, 1, 255, 255, 255, 16, 8, 0)
                 elif message == 2:
                     count = struct.unpack('!H', receive(3)[1:])[0]
-                    receive(count * 4)
+                    self.encodings = set(struct.unpack('!' + 'i' * count, receive(count * 4)))
                 elif message == 3:
                     receive(9)
                     self.requested = True

@@ -261,3 +261,17 @@ which excludes the native pointer.  It checks real pointer visibility,
 remote cursor pixels, margins, focus, suspension, and exit restoration.
 Options cover left/right scrollbars, disconnect, SIGKILL, disabled hiding,
 ViewOnly, missing WINDOWID, and missing remote cursor shape.
+
+RFB interoperability regression
+===============================
+  python3 vncsixel/tests/protocol-smoke.py /path/to/vncsixel \
+      --report /private/protocol.json
+
+The private fixture compares actual xterm pixels with an independent RGB
+model, including the area outside a resized image.  Cases cover Raw,
+Hextile raw tiles, ZRLE solid tiles, non-overlapping and overlapping
+CopyRect, RichCursor masks/hotspots, XCursor, opaque CursorWithAlpha,
+server cursor position, clipping, empty cursors, DesktopSize and
+ExtendedDesktopSize.  Add --colors 8 for the eight-color renderer.
+--server-format rgb565 or big-endian checks negotiation of the client's
+requested 32-bit wire format; it does not force 16-bit decoding.

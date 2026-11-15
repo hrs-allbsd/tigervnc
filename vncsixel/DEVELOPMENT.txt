@@ -162,3 +162,22 @@ Validation after the local pointer change:
   staged binary passes native pointer, authentication and terminal tests.
   HOSTCURSOR defaults on and declares X11/Xfixes runtime dependencies.
   The GitHub snapshot remains fixed; patches contain unpublished changes.
+
+RFB interoperability milestone (2026-11-15)
+------------------------------------------
+Added protocol-smoke.py with an independent RGB framebuffer model and
+exact xterm pixel comparisons, including cleared margins after shrink.
+All 19 cases pass with 256 and 8 color registers, and with RGB565 and
+big-endian ServerInit formats.  The client explicitly requests its
+32-bit little-endian format when the server's initial format differs.
+CopyRect overlap in both directions, Hextile raw tiles, ZRLE solid tiles,
+three cursor shapes, hotspot/mask/position/clipping/removal, and both
+server resize messages are covered.  No renderer fix was needed.
+This is representative coverage, not all encoding/filter combinations;
+CursorWithAlpha currently checks opaque pixels, not partial alpha.
+
+A 180.135s passive real-server observation decoded 2880 updates and
+rendered 1285 frames / 1364 regions: 7276118 SIXEL bytes, 20.000s CPU,
+150628 KiB peak RSS and 155250 bytes peak terminal output queue.
+No remote input or live-server screenshot was recorded.  Three minutes
+is a smoke soak, not an overnight stability result or WAN latency test.
