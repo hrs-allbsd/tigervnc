@@ -32,6 +32,7 @@ int main(int argc, char** argv)
 		    "VNC_USERNAME and VNC_PASSWORD: same environment as vncviewer.\n"
 		    "-ViewOnly: suppress remote input; -Shared=0: exclusive session.\n"
 		    "-CellSize WxH, -PixelSize WxH: override terminal geometry.\n"
+		    "-SingleRect: use one bounding rectangle instead of sparse regions.\n"
 		    "-FullFrame: disable partial updates for comparison or fallback.\n"
 		    "-MaxFPS 1..60: redraw rate limit (default 10).\n"
 		    "-PerfLog file: numeric performance summary in JSON.\n"

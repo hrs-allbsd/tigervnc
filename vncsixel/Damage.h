@@ -46,5 +46,81 @@ inline DamageRect damage(const std::vector<uint8_t>& previous,
 	bottom = std::min(height, ((bottom - 1) / band + 1) * band);
 	return {left, top, right - left, bottom - top};
 }
+inline std::vector<DamageRect> damageRegions(const std::vector<uint8_t>& previous,
+    const std::vector<uint8_t>& current, int width, int height,
+    int cellWidth, int cellHeight, bool force, bool single, int paletteColors = 256)
+{
+	DamageRect bounds = damage(previous, current, width, height,
+	    cellWidth, cellHeight, force);
+	if (!bounds.width) return {};
+	if (force || single || previous.size() != current.size()) return {bounds};
+	int a = cellHeight, b = 6;
+	while (b) {
+		int remainder = a % b;
+		a = b;
+		b = remainder;
+	}
+	int tileWidth = cellWidth * 16, tileHeight = cellHeight / a * 6;
+	std::vector<DamageRect> result;
+	for (int y = bounds.y; y < bounds.y + bounds.height; y += tileHeight) {
+		int h = std::min(tileHeight, height - y);
+		int run = -1, end = bounds.x;
+		auto finish = [&] {
+			if (run < 0) return;
+			for (auto& r : result) {
+				if (r.x == run && r.width == end - run &&
+				    r.y + r.height == y) {
+					r.height += h;
+					run = -1;
+					return;
+				}
+			}
+			result.push_back({run, y, end - run, h});
+			run = -1;
+		};
+		for (int x = bounds.x; x < bounds.x + bounds.width; x += tileWidth) {
+			int w = std::min(tileWidth, width - x);
+			bool changed = false;
+			for (int row = y; row < y + h && !changed; row++) {
+				size_t i = static_cast<size_t>(row) * width + x;
+				changed = !std::equal(current.begin() + i,
+				    current.begin() + i + w, previous.begin() + i);
+			}
+			if (changed) {
+				if (run < 0) run = x;
+				end = x + w;
+			} else {
+				finish();
+			}
+		}
+		finish();
+		if (result.size() > 32) return {bounds};
+	}
+	uint64_t pixels = 0;
+	for (const auto& r : result)
+		pixels += static_cast<uint64_t>(r.width) * r.height;
+	/* Avoid fragmentation when additional palette definitions outweigh
+	 * the saved area.  This conservative estimate is not a byte count. */
+	if (pixels + (result.size() - 1) * 4096 >=
+	    static_cast<uint64_t>(bounds.width) * bounds.height)
+		return {bounds};
+	/* Long single-color runs compress well.  Estimate row/color transitions
+	 * and per-DCS palette cost rather than preferring fewer pixels alone. */
+	auto cost = [&](const DamageRect& r) {
+		uint64_t value = paletteColors * 16 + 128;
+		for (int y = r.y; y < r.y + r.height; y++) {
+			value += 2;
+			size_t row = static_cast<size_t>(y) * width;
+			for (int x = r.x + 1; x < r.x + r.width; x++)
+				value += current[row + x] != current[row + x - 1];
+		}
+		return value;
+	};
+	uint64_t separateCost = 0;
+	for (const auto& r : result) separateCost += cost(r);
+	if (separateCost >= cost(bounds)) return {bounds};
+	return result;
+}
+
 }
 #endif

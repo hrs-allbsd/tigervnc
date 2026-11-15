@@ -27,6 +27,7 @@ namespace {
 core::StringParameter passwordFile("PasswordFile",
     "Password file for VNC authentication", "");
 core::AliasParameter passwd("passwd", &passwordFile);
+core::BoolParameter singleRect("SingleRect", "Use one changed rectangle per frame", false);
 core::BoolParameter fullFrame("FullFrame", "Disable partial screen updates", false);
 core::BoolParameter sharedSession("Shared", "Request a shared VNC session", true);
 core::BoolParameter viewOnly("ViewOnly", "Do not send remote input", false);
@@ -209,22 +210,17 @@ bool Connection::render()
 		    ((rgb[i * 3] >= 128 ? 4 : 0) |
 		    (rgb[i * 3 + 1] >= 128 ? 2 : 0) |
 		    (rgb[i * 3 + 2] >= 128 ? 1 : 0));
-	DamageRect rect = damage(previousFrame, indexed, displayWidth,
+	auto regions = damageRegions(previousFrame, indexed, displayWidth,
 	    displayHeight, terminal.cellWidth, terminal.cellHeight,
 	    fullFrame || forceFull || displayWidth != oldWidth ||
-	    displayHeight != oldHeight);
-	if (!rect.width) {
+	    displayHeight != oldHeight, singleRect, terminal.paletteColors);
+	if (regions.empty()) {
 		performance.snapshotMs += std::chrono::duration<double, std::milli>(
 		    std::chrono::steady_clock::now() - snapshotStart).count();
 		performance.skipped++;
 		dirty = false;
 		return false;
 	}
-	std::vector<uint8_t> region(static_cast<size_t>(rect.width) * rect.height);
-	for (int y = 0; y < rect.height; y++)
-		std::copy_n(indexed.data() + static_cast<size_t>(rect.y + y) *
-		    displayWidth + rect.x, rect.width,
-		    region.data() + static_cast<size_t>(y) * rect.width);
 	performance.remoteWidth = rw;
 	performance.remoteHeight = rh;
 	performance.width = displayWidth;
@@ -232,50 +228,73 @@ bool Connection::render()
 	auto encodeStart = std::chrono::steady_clock::now();
 	performance.snapshotMs += std::chrono::duration<double, std::milli>(
 	    encodeStart - snapshotStart).count();
-	sixel_output_t* output = nullptr;
-	sixel_dither_t* dither = nullptr;
-	Encoded encoded;
-	if (SIXEL_FAILED(sixel_output_new(&output, appendSixel, &encoded, nullptr)))
-		throw std::runtime_error("Cannot create SIXEL output");
-	if (SIXEL_FAILED(sixel_dither_new(&dither, terminal.paletteColors, nullptr))) {
-		sixel_output_unref(output);
-		throw std::runtime_error("Cannot create SIXEL palette");
-	}
-	unsigned char palette[256 * 3];
-	for (int i = 0; i < terminal.paletteColors; i++) {
-		if (terminal.paletteColors == 8) {
-			palette[i * 3] = i & 4 ? 255 : 0;
-			palette[i * 3 + 1] = i & 2 ? 255 : 0;
-			palette[i * 3 + 2] = i & 1 ? 255 : 0;
-			continue;
+	std::string frame;
+	uint64_t bytes = 0, pixelsEncoded = 0;
+	double cropMs = 0;
+	for (const auto& rect : regions) {
+		auto cropStart = std::chrono::steady_clock::now();
+		std::vector<uint8_t> region(static_cast<size_t>(rect.width) * rect.height);
+		for (int y = 0; y < rect.height; y++)
+			std::copy_n(indexed.data() + static_cast<size_t>(rect.y + y) *
+			    displayWidth + rect.x, rect.width,
+			    region.data() + static_cast<size_t>(y) * rect.width);
+		cropMs += std::chrono::duration<double, std::milli>(
+		    std::chrono::steady_clock::now() - cropStart).count();
+		sixel_output_t* output = nullptr;
+		sixel_dither_t* dither = nullptr;
+		Encoded encoded;
+		if (SIXEL_FAILED(sixel_output_new(&output, appendSixel, &encoded, nullptr)))
+			throw std::runtime_error("Cannot create SIXEL output");
+		if (SIXEL_FAILED(sixel_dither_new(&dither, terminal.paletteColors, nullptr))) {
+			sixel_output_unref(output);
+			throw std::runtime_error("Cannot create SIXEL palette");
 		}
-		palette[i * 3] = ((i >> 5) & 7) * 255 / 7;
-		palette[i * 3 + 1] = ((i >> 2) & 7) * 255 / 7;
-		palette[i * 3 + 2] = (i & 3) * 255 / 3;
+		unsigned char palette[256 * 3];
+		for (int i = 0; i < terminal.paletteColors; i++) {
+			if (terminal.paletteColors == 8) {
+				palette[i * 3] = i & 4 ? 255 : 0;
+				palette[i * 3 + 1] = i & 2 ? 255 : 0;
+				palette[i * 3 + 2] = i & 1 ? 255 : 0;
+				continue;
+			}
+			palette[i * 3] = ((i >> 5) & 7) * 255 / 7;
+			palette[i * 3 + 1] = ((i >> 2) & 7) * 255 / 7;
+			palette[i * 3 + 2] = (i & 3) * 255 / 3;
+		}
+		sixel_dither_set_palette(dither, palette);
+		sixel_dither_set_pixelformat(dither, SIXEL_PIXELFORMAT_PAL8);
+		sixel_dither_set_diffusion_type(dither, SIXEL_DIFFUSE_NONE);
+		sixel_dither_set_body_only(dither, 0);
+		SIXELSTATUS result = sixel_encode(region.data(), rect.width, rect.height, 1, dither, output);
+		sixel_dither_unref(dither);
+		sixel_output_unref(output);
+		if (SIXEL_FAILED(result) || encoded.failed)
+			throw std::runtime_error("SIXEL encoding failed or exceeded output limit");
+		std::string cup = "\033[" + std::to_string(rect.y / terminal.cellHeight + 1) +
+		    ";" + std::to_string(rect.x / terminal.cellWidth + 1) + "H";
+		if (frame.size() + cup.size() + encoded.bytes.size() > 32 * 1024 * 1024)
+			throw std::runtime_error("SIXEL frame exceeds 32 MiB");
+		frame += cup;
+		frame += encoded.bytes;
+		bytes += encoded.bytes.size();
+		pixelsEncoded += static_cast<uint64_t>(rect.width) * rect.height;
 	}
-	sixel_dither_set_palette(dither, palette);
-	sixel_dither_set_pixelformat(dither, SIXEL_PIXELFORMAT_PAL8);
-	sixel_dither_set_diffusion_type(dither, SIXEL_DIFFUSE_NONE);
-	sixel_dither_set_body_only(dither, 0);
-	SIXELSTATUS result = sixel_encode(region.data(), rect.width, rect.height, 1, dither, output);
-	sixel_dither_unref(dither);
-	sixel_output_unref(output);
-	if (SIXEL_FAILED(result) || encoded.failed)
-		throw std::runtime_error("SIXEL encoding failed or exceeded output limit");
 	double encodeMs = std::chrono::duration<double, std::milli>(
-	    std::chrono::steady_clock::now() - encodeStart).count();
+	    std::chrono::steady_clock::now() - encodeStart).count() - cropMs;
+	performance.snapshotMs += cropMs;
 	performance.encodeMs += encodeMs;
 	performance.maxEncodeMs = std::max(performance.maxEncodeMs, encodeMs);
 	performance.frames++;
-	performance.encodedBytes += encoded.bytes.size();
+	performance.encodedBytes += bytes;
+	performance.regions += regions.size();
 	if (displayWidth != oldWidth || displayHeight != oldHeight)
 		terminal.queue("\033[H\033[2J");
-	terminal.queue("\033[" + std::to_string(rect.y / terminal.cellHeight + 1) +
-	    ";" + std::to_string(rect.x / terminal.cellWidth + 1) + "H" + encoded.bytes);
+	terminal.queue(frame);
 	previousFrame.swap(indexed);
 	forceFull = false;
-	performance.encodedPixels += static_cast<uint64_t>(rect.width) * rect.height;
-	if (rect.width == displayWidth && rect.height == displayHeight)
+	performance.encodedPixels += pixelsEncoded;
+	if (regions.size() == 1 && regions[0].width == displayWidth &&
+	    regions[0].height == displayHeight)
 		performance.fullFrames++;
 	else
 		performance.partialFrames++;

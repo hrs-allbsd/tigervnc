@@ -21,7 +21,7 @@ args.records.mkdir(parents=True, exist_ok=True)
 spec = importlib.util.spec_from_file_location('fixture', Path(__file__).with_name('rfb-fixture.py'))
 fixture = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(fixture)
-server = fixture.Server()
+server = fixture.Server(textured=True)
 processes = []
 
 def wait_for(check, message):
@@ -82,8 +82,12 @@ with tempfile.TemporaryDirectory() as directory, open(os.devnull, 'wb') as null:
                  (114, 78, 96, 78, b'\0\0\xff\0'),
                  (18, 78, 96, 78, b'\xff\xff\xff\0'),
                  (594, 426, 5, 5, b'\0\xff\0\0')]
-        for i, (x, y, width, height, color) in enumerate(cases):
-            server.update(x, y, width, height, color * width * height)
+        cases = [[rect] for rect in cases]
+        cases.append([(24, 234, 96, 78, b'\0\xff\0\0'),
+                      (480, 390, 96, 39, b'\xff\0\0\0')])
+        for i, rectangles in enumerate(cases):
+            server.update_rects([(x, y, width, height, color * width * height)
+                for x, y, width, height, color in rectangles])
             wait_for(lambda: server.sent >= i + 2, 'update not sent')
             def changed():
                 image[0] = shot()
@@ -146,13 +150,14 @@ with tempfile.TemporaryDirectory() as directory, open(os.devnull, 'wb') as null:
         terminal.wait(timeout=10)
         data = json.loads(report.read_text())
         assert data['partial_frames'] >= len(cases), data
+        assert data['regions'] > data['frames'], 'separated updates were not split'
         assert data['full_frames'] >= len(cases) + 1, data
         if args.slow_pty:
             assert data['blocked_writes'] > 0, data
             assert data['peak_queue_bytes'] < 32 * 1024 * 1024, data
             assert data['updates'] >= len(cases) + 8, data
             print('PASS: blocked PTY stays bounded, RFB progresses, latest framebuffer preserved')
-        print('PASS: partial/full pixel equality, black erasure, adjacent regions, lower-right band, shared/view-only')
+        print('PASS: partial/full pixel equality, black erasure, adjacent/distant regions, lower-right band, shared/view-only')
     finally:
         for process in reversed(processes):
             if process.poll() is None:

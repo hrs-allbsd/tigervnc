@@ -36,14 +36,14 @@ Performance::~Performance()
 	fprintf(file, "{\"seconds\":%.6f,\"cpu_seconds\":%.6f,"
 	    "\"max_rss_kib\":%ld,\"updates\":%llu,\"frames\":%llu,"
 	    "\"encoded_bytes\":%llu,\"skipped_frames\":%llu,"
-	    "\"full_frames\":%llu,\"partial_frames\":%llu,\"encoded_pixels\":%llu,"
+	    "\"regions\":%llu,\"full_frames\":%llu,\"partial_frames\":%llu,\"encoded_pixels\":%llu,"
 	    "\"tty_bytes\":%llu,\"peak_queue_bytes\":%llu,\"blocked_writes\":%llu,"
 	    "\"snapshot_ms\":%.6f,\"encode_ms\":%.6f,\"max_encode_ms\":%.6f,"
 	    "\"remote_width\":%d,\"remote_height\":%d,\"width\":%d,\"height\":%d}\n",
 	    seconds, cpu(usage) - initialCpu, usage.ru_maxrss,
 	    (unsigned long long)updates, (unsigned long long)frames,
 	    (unsigned long long)encodedBytes, (unsigned long long)skipped,
-	    (unsigned long long)fullFrames, (unsigned long long)partialFrames,
+	    (unsigned long long)regions, (unsigned long long)fullFrames, (unsigned long long)partialFrames,
 	    (unsigned long long)encodedPixels,
 	    (unsigned long long)ttyBytes, (unsigned long long)peakQueueBytes,
 	    (unsigned long long)blockedWrites,

@@ -58,8 +58,8 @@ prefixes; control characters other than formatting are discarded.
 
 The display fits without enlargement, preserving aspect ratio.  It uses
 nearest-neighbor sampling, a fixed 256-color RGB332 palette, and at most
-ten redraws per second by default (-MaxFPS accepts 1..60).  Changed pixels are enclosed in a rectangle
-aligned to character cells and SIXEL bands; unchanged output is skipped.
+ten redraws per second by default (-MaxFPS accepts 1..60).  Changed pixels use aligned rectangles selected by area and color-run
+complexity.  Distant changes can use separate SIXEL images; unchanged output is skipped.
 Use -FullFrame for the original full-screen fallback.  Cursor pixels are composited onto a
 snapshot; the RFB framebuffer remains intact.  All RFB updates, including
 CopyRect, are decoded even when terminal redraws are skipped.
@@ -86,9 +86,10 @@ server is used.  Existing package installations are not modified.
 
 Current limits and follow-up work:
 
-* Partial output uses one bounding rectangle of changes in the displayed
-  fixed-palette snapshot.  Multiple independent tiles and adaptive palette
-  remain follow-up work.  Forced redraw and resize always repaint in full.
+* Partial output merges changed tile runs into at most 32 regions, using
+  a single bounding rectangle when estimated compression/palette costs
+  favor it.  Adaptive palette remains follow-up work.  Forced redraw and
+  resize always repaint in full.
 * Framebuffers are limited to 64M pixels (256 MiB per 32-bit buffer),
   allowing 6K and 8K desktops.  Total memory usage can be higher, especially
   during resize when old and new buffers coexist.  Encoded output is limited
@@ -204,3 +205,26 @@ server, and detects the response pixel with XGetImage in the actual xterm
 window.  It reports local input-to-image latency, not physical display
 scanout, remote application processing, or WAN latency.  The default is
 100 samples after two warmups, with seeded variation of the input phase.
+
+Sparse output regions
+======================
+Changed tiles use 16 character columns by lcm(cell height, 6) pixels.
+Adjacent horizontal runs and matching vertical runs are merged.  Excessive
+fragmentation falls back to a bounding rectangle.  Palette overhead and
+horizontal color transitions are estimated before selecting multiple
+regions, so compressible blank areas are kept in one image.  The estimate
+is heuristic; it cannot guarantee the smallest possible encoded stream.
+Each region carries its own palette and the whole frame stays below the
+32 MiB output limit.  -SingleRect restores the previous bounding-rectangle
+path; -FullFrame still forces complete redraws.
+
+  python3 vncsixel/tests/regions-benchmark.py /path/to/vncsixel \
+      --textured --report /private/sparse.json
+  python3 vncsixel/tests/regions-benchmark.py /path/to/vncsixel \
+      --textured --single-rect --report /private/single.json
+
+Both modes receive the same initial image and 40 paired distant updates.
+Slow output may coalesce displayed frames while all RFB updates are decoded.
+Compare frame counts as well as bytes, CPU, and encoded pixels.  Omit
+--textured to verify the compressible blank-background case.  PerfLog now
+also records the number of separately encoded regions.

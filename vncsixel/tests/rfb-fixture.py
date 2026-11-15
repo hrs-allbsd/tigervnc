@@ -8,7 +8,7 @@ import time
 
 
 class Server:
-    def __init__(self, width=599, height=431, on_key=None):
+    def __init__(self, width=599, height=431, on_key=None, textured=False):
         self.width, self.height = width, height
         self.on_key = on_key
         self.key_events = []
@@ -19,9 +19,16 @@ class Server:
         self.port = self.listener.getsockname()[1]
         self.condition = threading.Condition()
         initial = bytearray(b'\xff\xff\xff\0' * width * height)
+        if textured:
+            for y in range(height):
+                for x in range(width):
+                    c = (x * 17 + y * 29) & 255
+                    initial[(y * width + x) * 4:(y * width + x + 1) * 4] = bytes(
+                        ((c & 3) * 255 // 3, ((c >> 2) & 7) * 255 // 7,
+                         (c >> 5) * 255 // 7, 0))
         for y in range(12):
             initial[y * width * 4:(y * width + 12) * 4] = b'\xff\0\0\0' * 12
-        self.pending = (0, 0, width, height, bytes(initial))
+        self.pending = [(0, 0, width, height, bytes(initial))]
         self.sent = 0
         self.error = None
         self.closed = False
@@ -31,9 +38,14 @@ class Server:
 
     def update(self, x, y, width, height, pixels):
         assert len(pixels) == width * height * 4
+        self.update_rects([(x, y, width, height, pixels)])
+
+    def update_rects(self, rectangles):
+        for x, y, width, height, pixels in rectangles:
+            assert len(pixels) == width * height * 4
         with self.condition:
             assert self.pending is None
-            self.pending = (x, y, width, height, pixels)
+            self.pending = rectangles
             self.condition.notify_all()
 
     def run(self):
@@ -63,8 +75,10 @@ class Server:
             while not self.closed:
                 with self.condition:
                     if self.requested and self.pending is not None:
-                        x, y, w, h, data = self.pending
-                        conn.sendall(struct.pack('!BBHHHHHi', 0, 0, 1, x, y, w, h, 0) + data)
+                        packet = struct.pack('!BBH', 0, 0, len(self.pending))
+                        for x, y, w, h, data in self.pending:
+                            packet += struct.pack('!HHHHi', x, y, w, h, 0) + data
+                        conn.sendall(packet)
                         self.pending = None
                         self.requested = False
                         self.sent += 1
