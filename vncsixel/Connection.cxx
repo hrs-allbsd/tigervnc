@@ -2,6 +2,7 @@
 #include "Connection.h"
 #include "Framebuffer.h"
 #include "Cursor.h"
+#include "Snapshot.h"
 #include "Palette.h"
 #include "Damage.h"
 #include "Help.h"
@@ -297,14 +298,9 @@ bool Connection::render()
 	std::vector<uint8_t> rgb(static_cast<size_t>(displayWidth) * displayHeight * 3);
 	int stride;
 	const uint8_t* pixels = fb->getBuffer(fb->getRect(), &stride);
-	for (int y = 0; y < displayHeight; y++) {
-		int sy = int(static_cast<int64_t>(y) * rh / displayHeight);
-		for (int x = 0; x < displayWidth; x++) {
-			int sx = int(static_cast<int64_t>(x) * rw / displayWidth);
-			fb->getPF().rgbFromBuffer(&rgb[(static_cast<size_t>(y) * displayWidth + x) * 3],
-			    pixels + (static_cast<size_t>(sy) * stride + sx) * 4, 1);
-		}
-	}
+	/* resizeFramebuffer() always allocates little-endian B,G,R,X bytes. */
+	sampleBGRX(rgb.data(), pixels, stride, rw, rh, displayWidth,
+	    displayHeight);
 	const auto& cursor = server.cursor();
 	performance.cursorSamples += compositeCursor(rgb.data(), displayWidth,
 	    displayHeight, rw, rh, cursor.getBuffer(), cursor.width(),

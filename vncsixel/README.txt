@@ -685,3 +685,24 @@ This changes serialization, not palette selection or sampled source pixels.
 No additional viewer option is needed.  On the measured library, byte
 savings vary with image content; lower wire volume does not guarantee lower
 latency or faster encoding on other libraries or terminals.
+
+Framebuffer RGB sampling
+------------------------
+The internal framebuffer is always little-endian 32bpp RGB888: its bytes
+are B,G,R,X on either host byte order.  Sampling reads those bytes directly
+and computes horizontal nearest-neighbor offsets once per snapshot.
+It keeps the existing floor(x*source_width/display_width) mapping, row
+stride handling and cursor-composition order.  Network pixel formats still
+pass through TigerVNC's decoder conversion into this internal format.
+
+Build and run the sampling-only microbenchmark:
+
+  python3 vncsixel/build-freebsd.py --test --benchmark
+  ../obj/freebsd-sixel/vncsixel/vncsixel-snapshot-benchmark 9 \
+      > /private/snapshot-benchmark.json
+
+Four source/display sizes include 1:1, Retina, 5120x4680 and 8K sources.
+The old PixelFormat conversion is the reference.  A warmup is discarded,
+timed order alternates, and every RGB output must match.  Output allocation,
+source decoding, quantization, SIXEL generation and terminal painting are
+outside the timings; this is not a complete-viewer speed measurement.

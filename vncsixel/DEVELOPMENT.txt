@@ -782,3 +782,37 @@ No input or screenshot is forwarded/captured.  This is an interoperability
 smoke test, not a baseline performance comparison or memory stability test.
 Records: size-photo.json, size-port-*.log/json and size-real.json.
 Representative photo/video tuning and multi-hour server runs remain open.
+
+2026-11-15: Sample the fixed framebuffer format directly
+------------------------------------------------------
+resizeFramebuffer() always allocates a little-endian 32bpp RGB888 managed
+buffer, whose bytes are B,G,R,X on either host byte order.  Snapshot.h now
+samples this format directly and computes horizontal source offsets once
+per snapshot.  It preserves the existing integer floor mapping, pixel
+stride and RGB output before cursor composition.  TigerVNC still converts
+all negotiated network formats into that same internal framebuffer.
+
+Two tests check all 6006 source/display dimension combinations up to 13x11
+against PixelFormat::rgbFromBuffer, plus explicit coordinates, padding,
+unused bytes and output sentinels.  All 48 frontend C++ tests pass.
+The serial 12-configuration JPEG/fragmented-update protocol matrix passes
+all 600 actual xterm pixel comparisons.  An initial parallel run failed
+before finding an xterm window; a logged serial debug run and full serial
+matrix pass.  The intermittent startup failure's cause remains unresolved.
+
+A same-binary sampling microbenchmark alternates reference/optimized order
+with one warmup and nine samples per case, checking every RGB output.
+PixelFormat construction and output allocation are outside the timings.
+Source -> display       Reference median ms   Optimized median ms
+599x431 -> 599x431               1.155046              0.201334
+6016x3384 -> 846x476              2.098217              0.610544
+5120x4680 -> 846x774              3.391139              0.976379
+7680x4320 -> 846x475              2.136092              0.598961
+
+These are about 3.4..5.7x sampling improvements, not complete-viewer speed
+ratios.  Source decoding, RGB output allocation, quantization, cursor work,
+SIXEL encoding and terminal painting are excluded.  The source build and
+benchmark build run at nice 20; timing samples run at normal priority.
+Records: snapshot-benchmark.json, snapshot-build.log,
+snapshot-protocol-serial/ and the failed snapshot-protocol/ startup logs.
+build-freebsd.py --benchmark builds the optional benchmark at nice 20.

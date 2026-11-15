@@ -11,6 +11,7 @@ parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--build-dir', type=Path)
 parser.add_argument('--jobs', type=int, default=4)
 parser.add_argument('--test', action='store_true')
+parser.add_argument('--benchmark', action='store_true', help='Build the RGB snapshot microbenchmark')
 parser.add_argument('--without-host-cursor', action='store_true')
 args = parser.parse_args()
 if platform.system() != 'FreeBSD' or args.jobs < 1:
@@ -37,13 +38,20 @@ if args.without_host_cursor:
     cmd.append('-DENABLE_HOST_CURSOR=OFF')
 else:
     cmd.append('-DENABLE_HOST_CURSOR=ON')
+if args.test or args.benchmark:
+    cmd.append('-DBUILD_TESTING=ON')
 if args.test:
     cmd.append('-DCMAKE_REQUIRE_FIND_PACKAGE_GTest=ON')
 subprocess.run(cmd, check=True)
 targets = ['vncsixel'] + (['vncsixel-input-tests', 'vncsixel-memory-tests'] if args.test else [])
+if args.benchmark:
+    targets.append('vncsixel-snapshot-benchmark')
 subprocess.run(['cmake', '--build', str(build), '--parallel', str(args.jobs),
                 '--target', *targets], check=True)
 if args.test:
     subprocess.run(['ctest', '--test-dir', str(build / 'vncsixel'),
                     '--output-on-failure', '--no-tests=error'], check=True)
 print('Viewer:', build / 'vncsixel/vncsixel')
+
+if args.benchmark:
+    print('Snapshot benchmark:', build / 'vncsixel/vncsixel-snapshot-benchmark')
