@@ -76,12 +76,22 @@ void Connection::framebufferUpdateEnd()
 }
 void Connection::getUserPasswd(std::string* user, std::string* password)
 {
-	/* getpass reads the controlling terminal without echo; before raw mode. */
+	/* Authentication prompts run before entering terminal raw mode. */
 	if (user) {
-		char* value = getpass("VNC username: ");
-		if (!value)
-			throw std::runtime_error("Cannot read username");
-		*user = value;
+		std::unique_ptr<FILE, decltype(&fclose)> tty(
+		    fopen("/dev/tty", "r+"), fclose);
+		if (!tty || fputs("VNC username: ", tty.get()) == EOF ||
+		    fflush(tty.get()) == EOF)
+			throw std::runtime_error("Cannot prompt for username");
+		user->clear();
+		int c;
+		while ((c = fgetc(tty.get())) != '\n') {
+			if (c == EOF)
+				throw std::runtime_error("Cannot read username");
+			if (user->size() >= 4096)
+				throw std::runtime_error("Username exceeds 4096 bytes");
+			user->push_back(static_cast<char>(c));
+		}
 	}
 	if (password) {
 		char* value = getpass("VNC password: ");
