@@ -2,6 +2,8 @@
 #include "Connection.h"
 #include "Framebuffer.h"
 #include <rfb/PixelBuffer.h>
+#include <rfb/obfuscate.h>
+#include <core/Configuration.h>
 #include <rfb/Cursor.h>
 #define XK_MISCELLANY
 #include <rfb/keysymdef.h>
@@ -11,11 +13,18 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <stdexcept>
 #include <vector>
 #include <unistd.h>
 
 using namespace sixelvnc;
+
+namespace {
+core::StringParameter passwordFile("PasswordFile",
+    "Password file for VNC authentication", "");
+core::AliasParameter passwd("passwd", &passwordFile);
+}
 
 Connection::Connection(const char* name, Terminal& term) : terminal(term)
 {
@@ -76,6 +85,28 @@ void Connection::framebufferUpdateEnd()
 }
 void Connection::getUserPasswd(std::string* user, std::string* password)
 {
+	/* Match vncviewer/CConn.cxx: environment precedes password files. */
+	const char* envUser = getenv("VNC_USERNAME");
+	const char* envPassword = getenv("VNC_PASSWORD");
+	if (password && envPassword && (!user || envUser)) {
+		if (user) *user = envUser;
+		*password = envPassword;
+		return;
+	}
+	const char* path = passwordFile;
+	if (!user && password && path[0]) {
+		std::unique_ptr<FILE, decltype(&fclose)> file(
+		    fopen(path, "rb"), fclose);
+		if (!file)
+			throw std::runtime_error("Cannot open VNC password file");
+		uint8_t bytes[8];
+		size_t count = fread(bytes, 1, sizeof(bytes), file.get());
+		if (ferror(file.get()))
+			throw std::runtime_error("Cannot read VNC password file");
+		*password = rfb::deobfuscate(bytes, count);
+		std::fill(bytes, bytes + sizeof(bytes), 0);
+		return;
+	}
 	/* Authentication prompts run before entering terminal raw mode. */
 	if (user) {
 		std::unique_ptr<FILE, decltype(&fclose)> tty(

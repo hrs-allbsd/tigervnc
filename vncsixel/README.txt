@@ -94,3 +94,28 @@ Current limits and follow-up work:
   outside this version.  Long paste is streamed as character key pairs.
 * Tests cover FreeBSD 15.1-STABLE/aarch64 and XTerm 410.  TLS and RSA-AES
   interoperability have not been exercised by the localhost smoke test.
+
+Authentication
+==============
+Username input is echoed; interactive passwords are not echoed.
+As in vncviewer/CConn.cxx, VNC_USERNAME and VNC_PASSWORD supply credentials
+for authentication requiring both username and password.  Both variables
+must be set; otherwise both values are prompted for.  For password-only
+authentication, VNC_PASSWORD alone suffices.  Empty values count as set.
+
+  export VNC_USERNAME=alice
+  export VNC_PASSWORD
+  vncsixel mac.example.org
+
+Set VNC_PASSWORD in your shell before running this example.
+For password-only VNC authentication, a file made with vncpasswd can be
+selected using the same parameter names and syntax as vncviewer:
+
+  vncsixel -passwd ~/.vnc/passwd host.example.org
+  vncsixel -PasswordFile ~/.vnc/passwd host.example.org
+  vncsixel -PasswordFile="$HOME/.vnc/passwd" host.example.org
+
+VNC_PASSWORD takes precedence over the password file.  Password files
+contain the VNC-obfuscated eight-byte password, not plaintext, and are
+not used for authentication that requires a username.  This matches
+vncviewer.  Passwords are not accepted as command-line arguments.

@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 #include "Connection.h"
+#include <core/Configuration.h>
 #include <cerrno>
 #include <chrono>
 #include <csignal>
@@ -24,14 +25,30 @@ void signalHandler(int number)
 int main(int argc, char** argv)
 {
 	if (argc == 2 && (strcmp(argv[1], "--help") == 0 || strcmp(argv[1], "-h") == 0)) {
-		puts("Usage: vncsixel host[:display] | --terminal-check\n"
+		puts("Usage: vncsixel [options] host[:display] | --terminal-check\n"
+		    "-PasswordFile file (alias -passwd): vncpasswd-format file.\n"
+		    "VNC_USERNAME and VNC_PASSWORD: same environment as vncviewer.\n"
 		    "Run in xterm -ti vt340 with allowSendEvents:false.\n"
 		    "Ctrl+] then q quits; c/a/s latch modifiers; u releases input.\n"
 		    "See vncsixel/README.txt for build and terminal settings.");
 		return 0;
 	}
-	if (argc != 2) {
-		fprintf(stderr, "Usage: vncsixel host[:display] | --terminal-check\n");
+	const char* host = nullptr;
+	for (int i = 1; i < argc;) {
+		int used = core::Configuration::handleParamArg(argc, argv, i);
+		if (used > 0) {
+			i += used;
+			continue;
+		}
+		if (host || (argv[i][0] == '-' &&
+		    strcmp(argv[i], "--terminal-check") != 0)) {
+			fprintf(stderr, "Invalid argument; see vncsixel --help\n");
+			return 1;
+		}
+		host = argv[i++];
+	}
+	if (!host) {
+		fprintf(stderr, "Usage: vncsixel [options] host[:display] | --terminal-check\n");
 		return 1;
 	}
 	for (int number : {SIGINT, SIGTERM, SIGHUP, SIGQUIT, SIGWINCH, SIGTSTP}) {
@@ -43,14 +60,14 @@ int main(int argc, char** argv)
 	signal(SIGPIPE, SIG_IGN);
 	try {
 		sixelvnc::Terminal terminal;
-		if (strcmp(argv[1], "--terminal-check") == 0) {
+		if (strcmp(host, "--terminal-check") == 0) {
 			terminal.enter();
 			fprintf(stderr, "SIXEL terminal: %dx%d, cells %dx%d, pixel mouse %s\n",
 			    terminal.width, terminal.height, terminal.cellWidth,
 			    terminal.cellHeight, terminal.pixelMouse ? "yes" : "no");
 			return 0;
 		}
-		sixelvnc::Connection connection(argv[1], terminal);
+		sixelvnc::Connection connection(host, terminal);
 		bool entered = false;
 		sixelvnc::Input input([&](const sixelvnc::InputEvent& e) {
 			if (e.kind == sixelvnc::InputEvent::Refresh) resized = 1;
