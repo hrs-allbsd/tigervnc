@@ -16,6 +16,7 @@ class Server:
         self.client_format = None
         self.encodings = set()
         self.key_events = []
+        self.pointer_events = []
         self.requested = False
         self.listener = socket.socket()
         self.listener.bind(('127.0.0.1', 0))
@@ -110,7 +111,7 @@ class Server:
                     self.key_events.append((time.monotonic_ns(), down, key))
                     self.on_key(self, down, key)
                 elif message == 5 and self.on_key is not None:
-                    receive(5)  # Cleanup/mouse events in interactive tests
+                    self.pointer_events.append(receive(5))
                 else:
                     raise AssertionError('unexpected client message: ' + str(message))
         except (EOFError, OSError):

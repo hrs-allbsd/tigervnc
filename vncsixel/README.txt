@@ -319,3 +319,20 @@ The test uses an actual xterm selection insertion, verifies received key
 order and timing, then checks modifier isolation, concurrent painting,
 cancel, overflow recovery, quit and ViewOnly.  It uses a private RFB
 fixture; it sends no paste to the live server.
+
+Help during a connection
+========================
+Press Ctrl+] then h (or ?) to open local help.  Esc or Enter returns to
+the latest remote image; Ctrl+] h also closes it.  Space/n advances a
+page and p returns to the previous page.  Ctrl+] q quits from help.
+The screen uses the actual terminal text area and paginates when small.
+
+Opening help cancels queued paste and releases held remote input.
+While help is open, typed keys, mouse and pasted text stay local.  The
+viewer continues receiving framebuffer updates and redraws the latest
+image on return.  Help works in ViewOnly, after resize and after suspend.
+The local X11 pointer stays visible over help.  No server desktop name,
+credentials or other remote text is inserted in the help screen.
+
+  python3 vncsixel/tests/help-smoke.py /path/to/vncsixel \
+      --report /private/help.json

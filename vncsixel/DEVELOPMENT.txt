@@ -112,11 +112,10 @@ Remaining work, in order
    cursor/CopyRect/server-resize coverage.
 2. Optional photographic palette and further tuning of the sparse-region
    compression estimate, guided by representative workloads.
-3. Local help; paste pacing and configurable Escape timeout are done.
-4. TLS/RSA-AES interoperability and a host-key trust store/user workflow.
-5. Publish reviewed source commits, then replace port backports with a
+3. TLS/RSA-AES interoperability and a host-key trust store/user workflow.
+4. Publish reviewed source commits, then replace port backports with a
    newer pinned GitHub source commit; clean poudriere jail validation.
-6. pjm native Git/CMake support and safe import of the existing clone.
+5. pjm native Git/CMake support and safe import of the existing clone.
    The pjm checkout has unrelated uncommitted work and was not modified.
    Use the separate pjm-design.txt proposal before implementing this item.
 
@@ -232,3 +231,31 @@ Port revision 7 validation:
 The paste harness synchronizes the X cut buffer before requesting an
 xterm selection insertion, and waits for paste arrival before typing
 behind it.  X selection delivery is asynchronous across clients.
+
+Local help milestone (2026-11-15)
+--------------------------------
+Ctrl+] h or ? opens paginated local help.  Esc/Enter or Ctrl+] h returns
+to the latest framebuffer, and Ctrl+] q remains available.  Opening help
+cancels pending paste and releases remote input.  Help suppresses remote
+key, pointer and paste forwarding, including in ViewOnly.  It keeps the
+native pointer visible.  Server updates continue to be decoded without
+overwriting the help; returning forces a cleared full redraw.
+
+The layout uses terminal text dimensions, leaves the last column unused
+and pages within the available rows.  Resize and suspend/resume repaint
+help.  Focus-in refresh now redraws without re-running geometry queries
+or cancelling pending paste; SIGWINCH retains the resize path.
+
+35 frontend tests pass.  Actual xterm tests in interactive and ViewOnly
+modes verify local input isolation, receipt of server updates, latest
+image restoration, paging in a 40x12 terminal, suspend/resume and quit.
+The paste regression also passes after separating focus-in from resize.
+Port revision 8 includes local help and the focus refresh correction.
+
+Local help validation:
+- Xvfb cursor-pixel comparison verifies the native pointer is visible
+  over help and hidden again over the remote image after returning.
+- Escape timing and 6K xterm input/resize/suspend/restoration pass.
+- Port revision 8 builds at nice 20, passes check-plist, stage-qa and
+  package.  Its staged executable passes help and paste regressions.
+The input tests use a private RFB fixture; no live-server input was sent.

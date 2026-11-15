@@ -140,6 +140,10 @@ with tempfile.TemporaryDirectory() as directory, open(os.devnull, 'wb') as null:
         if not args.view_only and not args.no_remote_cursor:
             wait_for(lambda: 0xff00ff in image(inside[0] - 12, inside[1] - 12, 32, 32), 'remote software cursor missing')
             checks.append('remote cursor composited')
+        subprocess.run(['xdotool','key','ctrl+bracketright','h'],env=env,check=True)
+        check_visible(*inside, True, 'local help shows pointer')
+        subprocess.run(['xdotool','key','Escape'],env=env,check=True)
+        check_visible(*inside, not hiding, 'return from help')
         check_visible(origin[0] + 700, origin[1] + 500, True, 'image margin')
         check_visible(*inside, not hiding, 'return from margin')
         check_visible(1100, 800, True, 'outside xterm')
