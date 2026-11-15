@@ -601,3 +601,8 @@ Reports: records/memory-local.json{,l} and memory-real.json{,l} in the
 project directory.  Concurrent workload and diagnostic sampling can affect
 timing.  Next work is to isolate the real-server allocation growth under
 repeatable framebuffer/encoding workloads before changing memory policy.
+
+Port revision 15 builds cleanly at nice 20 and passes check-plist,
+stage-qa and package generation.  Its staged viewer produces valid
+allocator samples during a private local input regression.  The source
+viewer also passes all 50 JPEG/fragmented-update xterm pixel comparisons.
