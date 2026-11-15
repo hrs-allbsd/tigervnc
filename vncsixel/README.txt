@@ -82,7 +82,10 @@ Current limits and follow-up work:
 
 * Full-screen output is the correctness baseline.  Dirty-tile output and
   adaptive palette/performance optimization remain follow-up work.
-* Framebuffers are limited to 16M pixels and encoded output to 32 MiB.
+* Framebuffers are limited to 64M pixels (256 MiB per 32-bit buffer),
+  allowing 6K and 8K desktops.  Total memory usage can be higher, especially
+  during resize when old and new buffers coexist.  Encoded output is limited
+  to 32 MiB.
   The UI is single-threaded; encoding a large frame can delay input.
 * Capability queries have a 250 ms response budget and require an xterm
   with pixel-size reports.  No manual geometry override is implemented.

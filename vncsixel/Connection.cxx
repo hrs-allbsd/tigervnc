@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 #include "Connection.h"
+#include "Framebuffer.h"
 #include <rfb/PixelBuffer.h>
 #include <rfb/Cursor.h>
 #define XK_MISCELLANY
@@ -54,8 +55,7 @@ void Connection::resizeFramebuffer()
 {
 	int w = server.width(), h = server.height();
 	if (ready) releaseInput();
-	if (w <= 0 || h <= 0 || static_cast<size_t>(w) * h > 16 * 1024 * 1024)
-		throw std::runtime_error("Remote framebuffer exceeds 16M pixels");
+	checkFramebufferSize(w, h);
 	auto* fb = new rfb::ManagedPixelBuffer(
 	    rfb::PixelFormat(32, 24, false, true, 255, 255, 255, 16, 8, 0), w, h);
 	uint32_t black = 0;

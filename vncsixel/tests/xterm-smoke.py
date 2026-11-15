@@ -13,6 +13,7 @@ import time
 parser = argparse.ArgumentParser()
 parser.add_argument('viewer', type=Path)
 parser.add_argument('--records', type=Path, required=True)
+parser.add_argument('--remote-geometry', default='1024x768')
 parser.add_argument('--exit-mode', choices=['keyboard', 'signal', 'disconnect'], default='keyboard')
 args = parser.parse_args()
 args.records.mkdir(parents=True, exist_ok=True)
@@ -24,10 +25,10 @@ def spawn(argv, env=None, **kw):
     processes.append(p)
     return p
 
-def display():
+def display(geometry='1024x768'):
     r, w = os.pipe()
     try:
-        spawn(['Xvfb', '-displayfd', w, '-screen', '0', '1024x768x24', '-noreset', '-nolisten', 'tcp'], pass_fds=(w,))
+        spawn(['Xvfb', '-displayfd', w, '-screen', '0', geometry + 'x24', '-noreset', '-nolisten', 'tcp'], pass_fds=(w,))
         os.close(w)
         assert select.select([r], [], [], 10)[0], 'Xvfb timeout'
         return dict(os.environ, DISPLAY=':' + os.read(r, 80).decode().strip())
@@ -44,7 +45,7 @@ def wait_for(check, message):
     raise RuntimeError(message)
 
 try:
-    remote, local = display(), display()
+    remote, local = display(args.remote_geometry), display()
     subprocess.run(['xsetroot', '-solid', '#ff0000'], env=remote, check=True)
     with socket.socket() as sock:
         sock.bind(('127.0.0.1', 0))
@@ -84,7 +85,7 @@ try:
         wait_for(painted, 'no red SIXEL framebuffer observed')
         subprocess.run(['xdotool', 'windowfocus', '--sync', win], env=local, check=True)
         with (args.records / 'remote-events.log').open('w') as events:
-            event_app = subprocess.Popen(['xev', '-geometry', '300x200+0+0'],
+            event_app = subprocess.Popen(['xev', '-geometry', args.remote_geometry + '+0+0'],
                                          env=remote, stdout=events, stderr=log)
             processes.append(event_app)
             def remote_window():
@@ -102,6 +103,8 @@ try:
                     subprocess.run(['xdotool', 'mousemove', '100', '100', 'click', '1'], env=local, check=True)
                 return 'keysym 0x61, a' in text and 'keysym 0x63, c' in text and 'ButtonRelease' in text
             wait_for(received, 'remote keyboard/mouse events missing')
+        event_app.terminate()
+        event_app.wait(timeout=5)
         # Exercise suspend/resume and a smaller terminal before exiting.
         pid = int(pidfile.read_text())
         os.kill(pid, signal.SIGTSTP)
