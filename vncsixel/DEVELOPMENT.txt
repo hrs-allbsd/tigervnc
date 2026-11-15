@@ -1105,3 +1105,21 @@ public fork still points at 7889f82d, so port patches supply the manual.
 Poudriere listing fails because ZPOOL is unconfigured; no clean-jail
 validation is claimed.  No push, installation or host configuration
 change is performed.
+
+2026-11-15: Make 30 fps the default redraw limit
+---------------------------------------------
+Change MaxFPS from 10 to 30 at the user's request, keeping the 1..60 range
+and explicit overrides.  Update --help, README and vncsixel(1).  This
+limits changed redraws; it does not force unchanged frames to redraw.
+Source build at nice 20 and all 48 frontend tests pass.  Port revision 21
+rebuilds at nice 20 and passes stage, check-plist, stage-qa and package.
+Its actual xterm JPEG/fragmented protocol fixture passes with a temporary
+launcher removing the fixture's explicit -MaxFPS=30, exercising the new
+default.  Staged --help reports default 30.  Logs: default30-build.log in
+project/port records and default30-protocol.json/.log in project records.
+The package retains the revision 20 high-resolution xterm message and the
+installed manual.  No system installation or push is performed.
+
+The initial GPG attempt could not open /dev/ctty for a passphrase.  After
+the user restored signing, the change commit was amended with a GPG
+signature.  Author remains Hiroki Sato <hrs@allbsd.org>.
