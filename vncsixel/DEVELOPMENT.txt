@@ -664,3 +664,22 @@ preserves per-case allocator samples.  It removes stale summaries before
 running and produces a summary only when every subprocess succeeds.
 Runtime allocation policy is unchanged.  The tests measure retained
 staging capacity, not pixel correctness or general allocation leak freedom.
+
+All seven cases pass: 81 updates per case, 567 updates total.  Raw solid
+and noise both plateau at 33554432 bytes.  Tight copy/ZRLE raw-tile solid
+images plateau at 32768 bytes; noisy images plateau at 33554432 bytes.
+Tight noise with per-rectangle stream resets also retains 33554432 bytes.
+Largest encoded payloads are 3145728 bytes for Raw, 2315/2360027 for
+Tight solid/noise and 2765/2360219 for ZRLE solid/noise.
+
+Across phase-end samples, final minus initial live allocator usage ranges
+from -129464 to +39072 bytes among the seven cases.  This short controlled
+workload reveals no repeated staging expansion.  It neither reproduces
+all earlier real-server growth nor establishes a general leak bound.
+Palette/gradient/JPEG mixtures, longer traces and multi-hour real-server
+observations remain open; pixel correctness is covered separately by the
+existing protocol matrix, which is not rerun for this test-only change.
+
+Reports: records/compressed-memory/summary.json and per-case JSON/logs.
+The viewer runtime and port revision 16 package remain unchanged.  No
+build, installation or push is needed for these test/documentation changes.
