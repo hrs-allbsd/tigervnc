@@ -15,6 +15,7 @@ public:
 	void leave() noexcept;
 	void geometry();
 	void enableInput();
+	std::string takeInput();
 	void queue(const std::string&);
 	void flush();
 	bool pending() const { return offset < output.size(); }
@@ -25,9 +26,9 @@ private:
 	std::string query(const char*);
 	int tty = -1;
 	termios saved;
-	bool active = false;
+	bool active = false, modesSaved = false;
 	int otherKeys = -1;
-	std::string output;
+	std::string output, deferred;
 	size_t offset = 0;
 };
 }

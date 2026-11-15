@@ -60,3 +60,9 @@ TEST_F(Parser, AltAndFocus)
 	EXPECT_EQ(events[0].key, 'x'); EXPECT_EQ(events[0].modifiers, 2u);
 	EXPECT_EQ(events[1].kind, InputEvent::FocusOut);
 }
+
+TEST_F(Parser, CSIuModifiedCharacter)
+{
+	feed("\033[97;3u"); ASSERT_EQ(events.size(), 1u);
+	EXPECT_EQ(events[0].key, 'a'); EXPECT_EQ(events[0].modifiers, 2u);
+}

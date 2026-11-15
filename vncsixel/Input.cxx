@@ -89,6 +89,12 @@ bool Input::parse()
 			}
 			values.push_back(value);
 			if (final == '~' && values[0] == 200) { paste = true; return true; }
+			if (final == 'u' && values.size() == 2 && values[1] >= 1 && values[1] <= 8) {
+				uint32_t cp = values[0];
+				if (cp <= 0x10ffff && !(cp >= 0xd800 && cp <= 0xdfff))
+					character(cp, values[1] - 1, false);
+				return true;
+			}
 			if (final == '~' && values.size() == 3 && values[0] == 27 && values[1] >= 1 && values[1] <= 8) {
 				uint32_t cp = values[2];
 				if (cp <= 0x10ffff && !(cp >= 0xd800 && cp <= 0xdfff))

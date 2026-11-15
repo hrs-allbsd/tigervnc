@@ -29,12 +29,13 @@ private:
 	void status();
 	void resizeFramebuffer() override;
 	void framebufferUpdateEnd() override;
+	void framebufferUpdateStart() override;
 	void getUserPasswd(std::string*, std::string*) override;
 	bool verifyCertificate(unsigned, const uint8_t*, size_t) override;
 	bool verifyHostKey(const uint8_t*, size_t, const char*) override;
 	std::unique_ptr<network::TcpSocket> socket;
 	Terminal& terminal;
-	bool dirty = false;
+	bool dirty = false, updating = false;
 	bool prefix = false;
 	unsigned latched = 0, held = 0, mouseMods = 0;
 	uint16_t buttons = 0;

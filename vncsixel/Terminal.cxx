@@ -66,7 +66,24 @@ std::string Terminal::query(const char* text)
 				throw std::runtime_error("Oversized terminal response");
 		}
 	}
-	return answer;
+	const char* prefix = "\033[?";
+	char final = 'c';
+	std::string request(text);
+	if (request == "\033[14t") { prefix = "\033[4;"; final = 't'; }
+	else if (request == "\033[16t") { prefix = "\033[6;"; final = 't'; }
+	else if (request == "\033[?1016$p") { prefix = "\033[?1016;"; final = 'y'; }
+	else if (request == "\033[?4m") { prefix = "\033[>4;"; final = 'm'; }
+	size_t start = answer.find(prefix);
+	size_t finish = start == std::string::npos ? start : answer.find(final, start);
+	if (finish == std::string::npos) {
+		deferred += answer;
+		return {};
+	}
+	std::string result = answer.substr(start, finish - start + 1);
+	deferred += answer.substr(0, start) + answer.substr(finish + 1);
+	if (deferred.size() > 4096)
+		throw std::runtime_error("Too much input during terminal negotiation");
+	return result;
 }
 void Terminal::geometry()
 {
@@ -95,11 +112,13 @@ void Terminal::enter()
 		if (da.find(";4;") == std::string::npos && da.find(";4c") == std::string::npos)
 			throw std::runtime_error("SIXEL capability missing; use xterm -ti vt340");
 		geometry();
-		pixelMouse = query("\033[?1016$p").find(";2$y") != std::string::npos;
+		std::string mouse = query("\033[?1016$p");
+		pixelMouse = mouse.find(";2$y") != std::string::npos || mouse.find(";1$y") != std::string::npos;
 		std::string keys = query("\033[?4m");
-		sscanf(keys.c_str(), "\033[>4;%dm", &otherKeys);
-		queue("\033[?25;80;1003;1004;1006;1016;1070;2004s"
-		    "\033[?1049h\033[?25l\033[?80l\033[?1070h\033[H\033[2J");
+		sscanf(keys.c_str(), "\033[>4;%1dm", &otherKeys);
+		queue("\033[?25;80;1003;1004;1006;1016;1070;2004s");
+		modesSaved = true;
+		queue("\033[?1049h\033[?25l\033[?80l\033[?1070h\033[H\033[2J");
 		flush();
 	} catch (...) {
 		leave();
@@ -114,7 +133,9 @@ void Terminal::leave() noexcept
 	output.clear();
 	offset = 0;
 	try {
-		queue("\030\033\\\033[?25;80;1003;1004;1006;1016;1070;2004r\033[?1049l");
+		queue("\030\033\\");
+		if (modesSaved)
+			queue("\033[?25;80;1003;1004;1006;1016;1070;2004r\033[?1049l");
 		if (otherKeys >= 0)
 			queue("\033[>4;" + std::to_string(otherKeys) + "m");
 		auto end = Clock::now() + std::chrono::milliseconds(250);
@@ -125,7 +146,7 @@ void Terminal::leave() noexcept
 		}
 	} catch (...) {}
 	tcsetattr(tty, TCSANOW, &saved);
-	active = false;
+	active = modesSaved = false;
 }
 
 void Terminal::enableInput()
@@ -135,4 +156,11 @@ void Terminal::enableInput()
 		queue("\033[?1016h");
 	if (otherKeys >= 0 && otherKeys <= 3)
 		queue("\033[>4;2m");
+}
+
+std::string Terminal::takeInput()
+{
+	std::string result;
+	result.swap(deferred);
+	return result;
 }

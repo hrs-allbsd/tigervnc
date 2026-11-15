@@ -31,7 +31,8 @@ Connection::Connection(const char* name, Terminal& term) : terminal(term)
 }
 Connection::~Connection()
 {
-	try { releaseInput(); close(); } catch (...) {}
+	try { releaseInput(); getOutStream()->flush(); } catch (...) {}
+	close();
 }
 int Connection::fd() { return socket->getFd(); }
 void Connection::process()
@@ -55,13 +56,22 @@ void Connection::resizeFramebuffer()
 	if (ready) releaseInput();
 	if (w <= 0 || h <= 0 || static_cast<size_t>(w) * h > 16 * 1024 * 1024)
 		throw std::runtime_error("Remote framebuffer exceeds 16M pixels");
-	setFramebuffer(new rfb::ManagedPixelBuffer(
-	    rfb::PixelFormat(32, 24, false, true, 255, 255, 255, 16, 8, 0), w, h));
+	auto* fb = new rfb::ManagedPixelBuffer(
+	    rfb::PixelFormat(32, 24, false, true, 255, 255, 255, 16, 8, 0), w, h);
+	uint32_t black = 0;
+	fb->fillRect(fb->getRect(), &black);
+	setFramebuffer(fb);
 	dirty = true;
+}
+void Connection::framebufferUpdateStart()
+{
+	updating = true;
+	CConnection::framebufferUpdateStart();
 }
 void Connection::framebufferUpdateEnd()
 {
 	CConnection::framebufferUpdateEnd();
+	updating = false;
 	dirty = true;
 }
 void Connection::getUserPasswd(std::string* user, std::string* password)
@@ -109,12 +119,13 @@ int appendSixel(char* data, int size, void* context)
 }
 void Connection::render()
 {
-	if (!ready || !dirty || terminal.pending())
+	if (!ready || updating || !dirty || terminal.pending())
 		return;
 	auto* fb = getFramebuffer();
 	int rw = fb->width(), rh = fb->height();
 	double scale = std::min(1.0, std::min(double(terminal.width) / rw,
 	    double(terminal.height) / rh));
+	int oldWidth = displayWidth, oldHeight = displayHeight;
 	displayWidth = std::max(1, int(rw * scale));
 	displayHeight = std::max(1, int(rh * scale));
 	std::vector<uint8_t> rgb(static_cast<size_t>(displayWidth) * displayHeight * 3);
@@ -161,6 +172,8 @@ void Connection::render()
 	sixel_output_unref(output);
 	if (SIXEL_FAILED(result) || encoded.failed)
 		throw std::runtime_error("SIXEL encoding failed or exceeded output limit");
+	if (displayWidth != oldWidth || displayHeight != oldHeight)
+		terminal.queue("\033[H\033[2J");
 	terminal.queue("\033[H" + encoded.bytes);
 	status();
 	dirty = false;
@@ -229,6 +242,7 @@ bool Connection::input(const InputEvent& e)
 		modifiers(latched | mouseMods);
 		return true;
 	}
+	if (e.button & 128) return true; /* Extra buttons are not mapped yet. */
 	int x = e.x, y = e.y;
 	if (!terminal.pixelMouse) {
 		x = x * terminal.cellWidth + terminal.cellWidth / 2;

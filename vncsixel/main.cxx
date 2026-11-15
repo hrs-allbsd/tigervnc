@@ -10,10 +10,12 @@
 #include <unistd.h>
 
 namespace {
-volatile sig_atomic_t stopped = 0, resized = 0;
+volatile sig_atomic_t stopped = 0, resized = 0, suspended = 0;
 void signalHandler(int number)
 {
-	if (number == SIGWINCH)
+	if (number == SIGTSTP)
+		suspended = 1;
+	else if (number == SIGWINCH)
 		resized = 1;
 	else
 		stopped = 1;
@@ -21,11 +23,18 @@ void signalHandler(int number)
 }
 int main(int argc, char** argv)
 {
+	if (argc == 2 && (strcmp(argv[1], "--help") == 0 || strcmp(argv[1], "-h") == 0)) {
+		puts("Usage: vncsixel host[:display] | --terminal-check\n"
+		    "Run in xterm -ti vt340 with allowSendEvents:false.\n"
+		    "Ctrl+] then q quits; c/a/s latch modifiers; u releases input.\n"
+		    "See vncsixel/README.txt for build and terminal settings.");
+		return 0;
+	}
 	if (argc != 2) {
 		fprintf(stderr, "Usage: vncsixel host[:display] | --terminal-check\n");
 		return 1;
 	}
-	for (int number : {SIGINT, SIGTERM, SIGHUP, SIGWINCH}) {
+	for (int number : {SIGINT, SIGTERM, SIGHUP, SIGQUIT, SIGWINCH, SIGTSTP}) {
 		struct sigaction action = {};
 		action.sa_handler = signalHandler;
 		sigemptyset(&action.sa_mask);
@@ -44,11 +53,21 @@ int main(int argc, char** argv)
 		sixelvnc::Connection connection(argv[1], terminal);
 		bool entered = false;
 		sixelvnc::Input input([&](const sixelvnc::InputEvent& e) {
-			if (!connection.input(e)) stopped = 1;
+			if (e.kind == sixelvnc::InputEvent::Refresh) resized = 1;
+			else if (!connection.input(e)) stopped = 1;
 		});
 		auto lastInput = std::chrono::steady_clock::now();
 		auto next = std::chrono::steady_clock::now();
 		while (!stopped) {
+			if (suspended && entered) {
+				suspended = 0;
+				connection.releaseInput();
+				terminal.leave();
+				raise(SIGSTOP);
+				terminal.enter();
+				terminal.enableInput();
+				connection.redraw();
+			}
 			connection.process();
 			if (connection.ready && !entered) {
 				terminal.enter();
@@ -59,9 +78,12 @@ int main(int argc, char** argv)
 				resized = 0;
 				connection.releaseInput();
 				terminal.geometry();
+				connection.displayWidth = connection.displayHeight = 0;
 				terminal.queue("\033[H\033[2J");
 				connection.redraw();
 			}
+			std::string deferred = terminal.takeInput();
+			if (entered && !deferred.empty()) input.feed(deferred.data(), deferred.size());
 			auto now = std::chrono::steady_clock::now();
 			if (now - lastInput > std::chrono::milliseconds(50)) input.expire();
 			if (entered && now >= next) {
@@ -85,9 +107,11 @@ int main(int argc, char** argv)
 				stopped = 1;
 		}
 		connection.releaseInput();
-		connection.process();
 	} catch (const std::exception& e) {
-		fprintf(stderr, "vncsixel: %s\n", e.what());
+		std::string message(e.what());
+		for (char& c : message)
+			if (static_cast<unsigned char>(c) < 32 || c == 127) c = '?';
+		fprintf(stderr, "vncsixel: %s\n", message.c_str());
 		return 1;
 	}
 	return 0;
