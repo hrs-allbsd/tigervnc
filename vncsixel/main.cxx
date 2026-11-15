@@ -46,6 +46,7 @@ int main(int argc, char** argv)
 		    "VNC_USERNAME and VNC_PASSWORD: same environment as vncviewer.\n"
 		    "-KnownHosts file: RSA-AES keys; -StrictHostKeyChecking: reject unknown.\n"
 		    "-X509CA file, -X509CRL file: require readable, nonempty PEM files.\n"
+		    "Every explicitly supplied CRL must have current update dates.\n"
 		    "-ViewOnly: suppress remote input; -Shared=0: exclusive session.\n"
 		    "-CellSize WxH, -PixelSize WxH: override terminal geometry.\n"
 		    "-SingleRect: use one bounding rectangle instead of sparse regions.\n"

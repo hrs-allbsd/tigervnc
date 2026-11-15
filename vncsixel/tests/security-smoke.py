@@ -87,7 +87,8 @@ with tempfile.TemporaryDirectory() as directory, open(os.devnull,'wb') as null:
                     while query in pending:
                         offset=pending.index(query);del pending[:offset+len(query)]
                         os.write(master,response)
-                if accepted and b'\x1bP' in transcript and b'\x1b\\' in transcript and not stopped:
+                if b'\x1bP' in transcript and b'\x1b\\' in transcript and not stopped:
+                    assert accepted,(label,'unexpected framebuffer before rejection')
                     os.kill(int(pidfile.read_text()),signal.SIGTERM);stopped=True
             assert (b'SEC_DONE:0' in transcript)==accepted,(label,bytes(transcript[-700:]))
             assert answered==(answer is not None),(label,'missing prompt',bytes(transcript[-1200:]),(root/'server.log').read_text()[-1000:])
@@ -189,6 +190,16 @@ subjectAltName = DNS:localhost
         subprocess.run([*ca,'-in',str(root/'leaf.csr'),'-out',str(root/(name+'.crt')),
             '-extensions',extension,*dates],stdout=null,stderr=null,check=True)
     subprocess.run([*ca,'-gencrl','-out',str(root/'empty.crl')],stdout=null,stderr=null,check=True)
+    # Empty, correctly signed CRLs must still be within their validity window.
+    for name,begin,end in [('stale','20000101000000Z','20010101000000Z'),
+        ('future','20990101000000Z','21000101000000Z')]:
+        subprocess.run([*ca,'-gencrl','-crl_lastupdate',begin,'-crl_nextupdate',end,
+            '-out',str(root/(name+'.crl'))],stdout=null,stderr=null,check=True)
+    for name in ('stale','future'):
+        for order,parts in [('first',[name,'empty']),('last',['empty',name])]:
+            (root/(name+'-'+order+'.crl')).write_bytes(
+                b''.join((root/(part+'.crl')).read_bytes() for part in parts))
+    (root/'current-bundle.crl').write_bytes((root/'empty.crl').read_bytes()*2)
     subprocess.run([*ca,'-revoke',str(root/'valid.crt')],stdout=null,stderr=null,check=True)
     subprocess.run([*ca,'-gencrl','-out',str(root/'revoked.crl')],stdout=null,stderr=null,check=True)
     (root/'invalid.crl').write_text('invalid CRL\n')
@@ -201,6 +212,13 @@ subjectAltName = DNS:localhost
             run(name+' leaf certificate','X509Vnc',port,['-X509CA='+str(root/'ca.crt')],accepted=accepted)
             if name=='valid':
                 run('non-revoked CRL accepts','X509Vnc',port,['-X509CA='+str(root/'ca.crt'),'-X509CRL='+str(root/'empty.crl')])
+                run('current CRL bundle accepts','X509Vnc',port,
+                    ['-X509CA='+str(root/'ca.crt'),'-X509CRL='+str(root/'current-bundle.crl')])
+                for crl in ('stale','future','stale-first','stale-last','future-first','future-last'):
+                    diagnostic='X509CRL has expired' if crl.startswith('stale') else 'X509CRL is not yet valid'
+                    run(crl+' CRL rejected','X509Vnc',port,
+                        ['-X509CA='+str(root/'ca.crt'),'-X509CRL='+str(root/(crl+'.crl'))],
+                        accepted=False,expected=diagnostic)
                 run('revoked leaf rejected','X509Vnc',port,['-X509CA='+str(root/'ca.crt'),'-X509CRL='+str(root/'revoked.crl')],accepted=False)
                 for filename in ('missing.crl','invalid.crl','zero.crl'):
                     run(filename+' rejected','X509Vnc',port,['-X509CA='+str(root/'ca.crt'),'-X509CRL='+str(root/filename)],accepted=False,expected='Cannot load specified X509CRL file')

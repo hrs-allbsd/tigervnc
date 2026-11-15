@@ -265,8 +265,11 @@ void CSecurityTLS::setParam()
     if (caStatus < 0)
       vlog.error(_("Failed to load the user specified certificate authority"));
 
-    crlStatus = gnutls_certificate_set_x509_crl_file(
-      cert_cred, X509CRL, GNUTLS_X509_FMT_PEM);
+    if (client->requireCurrentCRL())
+      crlStatus = loadCurrentCRLs(X509CRL);
+    else
+      crlStatus = gnutls_certificate_set_x509_crl_file(
+        cert_cred, X509CRL, GNUTLS_X509_FMT_PEM);
     if (crlStatus < 0)
       vlog.error(_("Failed to load the user specified certificate revocation list"));
 
@@ -298,6 +301,57 @@ void CSecurityTLS::setParam()
   }
 }
 
+// Keep the checked PEM bytes until credential installation.  In particular,
+// do not reopen the pathname after checking CRL timestamps.
+int CSecurityTLS::loadCurrentCRLs(const char* path)
+{
+  struct CRLFile {
+    gnutls_datum_t data = {};
+    gnutls_x509_crl_t* list = nullptr;
+    unsigned int count = 0;
+    ~CRLFile() {
+      for (unsigned int i = 0; i < count; i++)
+        gnutls_x509_crl_deinit(list[i]);
+      gnutls_free(list);
+      gnutls_free(data.data);
+    }
+  } file;
+  int ret;
+
+  ret = gnutls_load_file(path, &file.data);
+  if (ret < 0)
+    return ret;
+  ret = gnutls_x509_crl_list_import2(&file.list, &file.count, &file.data,
+                                    GNUTLS_X509_FMT_PEM, 0);
+  if (ret < 0)
+    return ret;
+  for (unsigned int i = 0; i < file.count; i++) {
+    time_t issued = gnutls_x509_crl_get_this_update(file.list[i]);
+    time_t next = gnutls_x509_crl_get_next_update(file.list[i]);
+    if (issued == (time_t)-1 || next == (time_t)-1 || issued >= next)
+      throw protocol_error(_("X509CRL has no valid update interval"));
+    if (i == 0 || issued > crlThisUpdate)
+      crlThisUpdate = issued;
+    if (i == 0 || next < crlNextUpdate)
+      crlNextUpdate = next;
+  }
+  if (file.count)
+    checkCRLTime();
+  return gnutls_certificate_set_x509_crl_mem(
+    cert_cred, &file.data, GNUTLS_X509_FMT_PEM);
+}
+
+void CSecurityTLS::checkCRLTime()
+{
+  time_t now = time(nullptr);
+  if (now == (time_t)-1)
+    throw protocol_error(_("Cannot determine time for X509CRL validation"));
+  if (crlThisUpdate > now)
+    throw protocol_error(_("X509CRL is not yet valid"));
+  if (crlNextUpdate <= now)
+    throw protocol_error(_("X509CRL has expired"));
+}
+
 void CSecurityTLS::checkSession()
 {
   unsigned int status;
@@ -314,6 +368,10 @@ void CSecurityTLS::checkSession()
                       GNUTLS_A_UNSUPPORTED_CERTIFICATE);
     throw protocol_error(_("Unsupported certificate type"));
   }
+
+  // Authentication may have crossed nextUpdate while the TLS handshake ran.
+  if (client->requireCurrentCRL())
+    checkCRLTime();
 
   const char* purpose = client->getCertificatePurpose();
   if (purpose) {

@@ -376,3 +376,24 @@ servers and dummy credentials; no live trust or credentials are changed.
 Port revision 11 validation: nice 20 clean build, check-plist, stage-qa
 and package pass.  The staged viewer passes all 34 security cases,
 authentication, terminal negotiation and 19 RFB pixel comparisons.
+
+2026-11-15: Explicit CRL freshness
+---------------------------------
+The old viewer accepted a correctly signed, empty CRL whose nextUpdate
+was in 2001.  vncsixel now opts into CConnection::requireCurrentCRL()
+for a nonempty explicit X509CRL.  CSecurityTLS::loadCurrentCRLs() reads
+the PEM once, checks every parsed entry and installs the same bytes.
+The maximum thisUpdate and minimum nextUpdate are checked again after
+the TLS handshake.  Missing or reversed intervals also fail closed.
+Other frontends retain their existing CRL loader and policy.
+
+The private Xvnc matrix passes 41 cases: the prior 34 plus stale/future
+CRLs, current bundles, and stale/future entries first or last in bundles.
+Failures must include the expected expiry/future diagnostic and must
+not display a framebuffer.  The 39 frontend and 273 upstream tests pass,
+and normal vncviewer builds.  No live credentials or trust were used.
+
+This does not add CRL issuer coverage, CRL signature checks beyond the
+existing trusted-file handling, CRL fetching or OCSP queries.  Operators
+must provide verified CA CRLs and an accurate local clock.  Third-party
+server interoperability and clean poudriere jail validation remain open.

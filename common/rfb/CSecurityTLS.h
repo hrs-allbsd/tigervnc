@@ -31,6 +31,7 @@
 #include <rfb/Security.h>
 
 #include <gnutls/gnutls.h>
+#include <ctime>
 
 namespace rdr {
   class InStream;
@@ -58,6 +59,9 @@ namespace rfb {
     CConnection *client;
 
   private:
+    int loadCurrentCRLs(const char*);
+    void checkCRLTime();
+    time_t crlThisUpdate = 0, crlNextUpdate = 0;
     gnutls_session_t session;
     gnutls_anon_client_credentials_t anon_cred;
     gnutls_certificate_credentials_t cert_cred;

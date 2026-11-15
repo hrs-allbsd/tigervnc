@@ -191,6 +191,9 @@ namespace rfb {
     // Frontends may throw to reject failed explicit file requirements.
     virtual void checkCertificateFiles(int, int) {}
 
+    // Require every explicitly supplied CRL to have a current interval.
+    virtual bool requireCurrentCRL() { return false; }
+
     // Optional Extended Key Usage OID required of the server certificate.
     virtual const char* getCertificatePurpose() { return nullptr; }
 

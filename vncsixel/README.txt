@@ -446,3 +446,19 @@ X.509 verification also requires serverAuth when the leaf certificate
 restricts Extended Key Usage.  A clientAuth-only certificate is rejected.
 Certificates without an EKU restriction retain GnuTLS's normal behavior.
 The existing chain, hostname, validity and revocation checks still apply.
+
+Explicit CRL freshness
+----------------------
+Every CRL in a nonempty explicit -X509CRL PEM file must include a valid
+thisUpdate/nextUpdate interval.  Reject future thisUpdate, expired
+nextUpdate, missing/unreadable dates and reversed/empty intervals.
+A bundle is rejected if any entry fails, independent of entry order.
+The timestamps are checked when importing the file and again when the
+TLS handshake completes.  The clock must therefore be set correctly.
+Validation and credential installation use the same loaded PEM bytes.
+
+This local-file policy does not fetch CRLs or query OCSP responders.
+It does not add issuer coverage or signature verification beyond the
+existing GnuTLS trusted-CRL handling.  Supply verified CRLs from your
+CA.  Optional default files and the final explicit empty override retain
+the previous behavior.  TLS security types without X.509 do not use CRLs.
