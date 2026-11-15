@@ -1,6 +1,9 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 #include "Connection.h"
 #include <rfb/PixelBuffer.h>
+#include <rfb/Cursor.h>
+#define XK_MISCELLANY
+#include <rfb/keysymdef.h>
 #include <rdr/FdInStream.h>
 #include <rdr/FdOutStream.h>
 #include <sixel.h>
@@ -22,11 +25,13 @@ Connection::Connection(const char* name, Terminal& term) : terminal(term)
 	setServerName(host.c_str());
 	setStreams(&socket->inStream(), &socket->outStream());
 	supportsDesktopResize = true;
+	supportsLocalCursor = true;
+	supportsCursorPosition = true;
 	initialiseProtocol();
 }
 Connection::~Connection()
 {
-	try { close(); } catch (...) {}
+	try { releaseInput(); close(); } catch (...) {}
 }
 int Connection::fd() { return socket->getFd(); }
 void Connection::process()
@@ -47,6 +52,7 @@ void Connection::initDone()
 void Connection::resizeFramebuffer()
 {
 	int w = server.width(), h = server.height();
+	if (ready) releaseInput();
 	if (w <= 0 || h <= 0 || static_cast<size_t>(w) * h > 16 * 1024 * 1024)
 		throw std::runtime_error("Remote framebuffer exceeds 16M pixels");
 	setFramebuffer(new rfb::ManagedPixelBuffer(
@@ -120,6 +126,15 @@ void Connection::render()
 			int sx = int(static_cast<int64_t>(x) * rw / displayWidth);
 			fb->getPF().rgbFromBuffer(&rgb[(static_cast<size_t>(y) * displayWidth + x) * 3],
 			    pixels + (static_cast<size_t>(sy) * stride + sx) * 4, 1);
+			const auto& cursor = server.cursor();
+			int cx = sx - pointer.x + cursor.hotspot().x;
+			int cy = sy - pointer.y + cursor.hotspot().y;
+			if (cx >= 0 && cy >= 0 && cx < cursor.width() && cy < cursor.height()) {
+				const uint8_t* fg = cursor.getBuffer() + (static_cast<size_t>(cy) * cursor.width() + cx) * 4;
+				uint8_t* bg = &rgb[(static_cast<size_t>(y) * displayWidth + x) * 3];
+				for (int c = 0; c < 3; c++)
+					bg[c] = (unsigned(bg[c]) * (255 - fg[3]) + unsigned(fg[c]) * fg[3]) / 255;
+			}
 		}
 	}
 	sixel_output_t* output = nullptr;
@@ -141,11 +156,105 @@ void Connection::render()
 	sixel_dither_set_pixelformat(dither, SIXEL_PIXELFORMAT_RGB888);
 	sixel_dither_set_diffusion_type(dither, SIXEL_DIFFUSE_NONE);
 	sixel_dither_set_body_only(dither, 0);
-	SIXELSTATUS status = sixel_encode(rgb.data(), displayWidth, displayHeight, 3, dither, output);
+	SIXELSTATUS result = sixel_encode(rgb.data(), displayWidth, displayHeight, 3, dither, output);
 	sixel_dither_unref(dither);
 	sixel_output_unref(output);
-	if (SIXEL_FAILED(status) || encoded.failed)
+	if (SIXEL_FAILED(result) || encoded.failed)
 		throw std::runtime_error("SIXEL encoding failed or exceeded output limit");
 	terminal.queue("\033[H" + encoded.bytes);
+	status();
 	dirty = false;
+}
+
+void Connection::setCursor(int w, int h, const core::Point& hotspot, const uint8_t* data)
+{
+	CConnection::setCursor(w, h, hotspot, data);
+	dirty = true;
+}
+void Connection::setCursorPos(const core::Point& pos)
+{
+	pointer = pos;
+	dirty = true;
+}
+void Connection::modifiers(unsigned wanted)
+{
+	const uint32_t keys[] = {XK_Shift_L, XK_Alt_L, XK_Control_L};
+	for (unsigned i = 0; i < 3; i++) {
+		unsigned bit = 1u << i;
+		if ((held & bit) && !(wanted & bit)) sendKeyRelease(keys[i]);
+		if (!(held & bit) && (wanted & bit)) sendKeyPress(keys[i], 0, keys[i]);
+	}
+	held = wanted;
+}
+void Connection::releaseInput()
+{
+	if (!ready) return;
+	sendPointerEvent(pointer, 0);
+	releaseAllKeys();
+	latched = held = mouseMods = 0;
+	buttons = 0;
+	prefix = false;
+}
+void Connection::status()
+{
+	terminal.queue("\033[" + std::to_string(terminal.height / terminal.cellHeight + 2) +
+	    ";1H\033[2KCtrl+] q quit, r redraw, c/a/s latch, u release  [" +
+	    ((latched & 4) ? "Ctrl " : "") + ((latched & 2) ? "Alt " : "") +
+	    ((latched & 1) ? "Shift" : "") + "]");
+}
+bool Connection::input(const InputEvent& e)
+{
+	if (!ready) return true;
+	if (e.kind == InputEvent::FocusOut) { releaseInput(); status(); return true; }
+	if (e.kind == InputEvent::Refresh) { dirty = true; return true; }
+	if (e.kind == InputEvent::Key) {
+		if (prefix) {
+			prefix = false;
+			if (e.key == 'q') return false;
+			if (e.key == 'r') { dirty = true; return true; }
+			if (e.key == 'u') releaseInput();
+			else if (e.key == 'c') latched ^= 4;
+			else if (e.key == 'a') latched ^= 2;
+			else if (e.key == 's') latched ^= 1;
+			else if (e.key == ']' && (e.modifiers & 4)) {
+				modifiers(latched | mouseMods | e.modifiers);
+				sendKeyPress(e.key, 0, e.key); sendKeyRelease(e.key);
+			}
+			modifiers(latched | mouseMods); status(); return true;
+		}
+		if (e.key == ']' && (e.modifiers & 4)) { prefix = true; return true; }
+		modifiers(latched | mouseMods | e.modifiers);
+		sendKeyPress(e.key, 0, e.key);
+		sendKeyRelease(e.key);
+		modifiers(latched | mouseMods);
+		return true;
+	}
+	int x = e.x, y = e.y;
+	if (!terminal.pixelMouse) {
+		x = x * terminal.cellWidth + terminal.cellWidth / 2;
+		y = y * terminal.cellHeight + terminal.cellHeight / 2;
+	}
+	if (displayWidth == 0 || displayHeight == 0) return true;
+	if ((x >= displayWidth || y >= displayHeight) && !buttons && !e.release) return true;
+	x = std::max(0, std::min(displayWidth - 1, x));
+	y = std::max(0, std::min(displayHeight - 1, y));
+	pointer = {int(int64_t(x) * server.width() / displayWidth),
+	    int(int64_t(y) * server.height() / displayHeight)};
+	unsigned button = e.button & 3;
+	mouseMods = e.modifiers;
+	modifiers(latched | mouseMods);
+	if (e.button & 64) {
+		if (button < 2 && !e.release)
+			sendPointerEvent(pointer, buttons | (1u << (3 + button)));
+	} else if (!(e.button & 32)) {
+		if (button < 3) {
+			if (e.release) buttons &= ~(1u << button);
+			else buttons |= 1u << button;
+		}
+	}
+	sendPointerEvent(pointer, buttons);
+	if (!buttons) mouseMods = 0;
+	modifiers(latched | mouseMods);
+	dirty = true;
+	return true;
 }

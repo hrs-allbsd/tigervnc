@@ -43,20 +43,27 @@ int main(int argc, char** argv)
 		}
 		sixelvnc::Connection connection(argv[1], terminal);
 		bool entered = false;
+		sixelvnc::Input input([&](const sixelvnc::InputEvent& e) {
+			if (!connection.input(e)) stopped = 1;
+		});
+		auto lastInput = std::chrono::steady_clock::now();
 		auto next = std::chrono::steady_clock::now();
 		while (!stopped) {
 			connection.process();
 			if (connection.ready && !entered) {
 				terminal.enter();
+				terminal.enableInput();
 				entered = true;
 			}
 			if (entered && resized && !terminal.pending()) {
 				resized = 0;
+				connection.releaseInput();
 				terminal.geometry();
 				terminal.queue("\033[H\033[2J");
 				connection.redraw();
 			}
 			auto now = std::chrono::steady_clock::now();
+			if (now - lastInput > std::chrono::milliseconds(50)) input.expire();
 			if (entered && now >= next) {
 				connection.render();
 				next = now + std::chrono::milliseconds(100);
@@ -69,13 +76,16 @@ int main(int argc, char** argv)
 			if (fds[1].revents & POLLIN) {
 				char bytes[1024];
 				ssize_t n = read(terminal.fd(), bytes, sizeof(bytes));
-				for (ssize_t i = 0; i < n; i++)
-					if (bytes[i] == 0x1d)
-						stopped = 1;
+				if (n > 0) {
+					input.feed(bytes, n);
+					lastInput = std::chrono::steady_clock::now();
+				}
 			}
 			if (fds[1].revents & (POLLHUP | POLLERR))
 				stopped = 1;
 		}
+		connection.releaseInput();
+		connection.process();
 	} catch (const std::exception& e) {
 		fprintf(stderr, "vncsixel: %s\n", e.what());
 		return 1;

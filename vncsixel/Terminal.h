@@ -14,6 +14,7 @@ public:
 	void enter();
 	void leave() noexcept;
 	void geometry();
+	void enableInput();
 	void queue(const std::string&);
 	void flush();
 	bool pending() const { return offset < output.size(); }

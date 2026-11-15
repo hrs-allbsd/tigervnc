@@ -61,7 +61,7 @@ try:
         # Pass paths as positional parameters, not interpolated shell code.
         wrapper = 'stty -g > "$1"; "$4" "$5" 2> "$6"; echo $? > "$3"; stty -g > "$2"'
         terminal = spawn(['xterm', '-ti', 'vt340', '-geometry', '100x36', '-fa', 'monospace',
-                          '-e', '/bin/sh', '-c', wrapper, 'smoke', before, after, status,
+                          '-xrm', 'XTerm*allowSendEvents: false', '-e', '/bin/sh', '-c', wrapper, 'smoke', before, after, status,
                           args.viewer.resolve(), '127.0.0.1::' + str(port), args.records.resolve() / 'viewer.log'], env=local)
         def window():
             result = subprocess.run(['xdotool', 'search', '--class', 'XTerm'], env=local,
@@ -80,11 +80,28 @@ try:
             return float(fraction) > .2
         wait_for(painted, 'no red SIXEL framebuffer observed')
         subprocess.run(['xdotool', 'windowfocus', '--sync', win], env=local, check=True)
-        subprocess.run(['xdotool', 'key', 'ctrl+bracketright'], env=local, check=True)
+        with (args.records / 'remote-events.log').open('w') as events:
+            event_app = subprocess.Popen(['xev', '-geometry', '300x200+0+0'],
+                                         env=remote, stdout=events, stderr=log)
+            processes.append(event_app)
+            def remote_window():
+                result = subprocess.run(['xdotool', 'search', '--name', 'Event Tester'],
+                                        env=remote, capture_output=True, text=True)
+                return result.stdout.splitlines()[-1] if result.returncode == 0 else None
+            rw = wait_for(remote_window, 'remote event window missing')
+            subprocess.run(['xdotool', 'windowfocus', '--sync', rw], env=remote, check=True)
+            subprocess.run(['xdotool', 'key', 'a', 'ctrl+c'], env=local, check=True)
+            subprocess.run(['xdotool', 'mousemove', '100', '100', 'click', '1'],
+                           env=local, check=True)
+            def received():
+                text = (args.records / 'remote-events.log').read_text()
+                return 'keysym 0x61, a' in text and 'keysym 0x63, c' in text and 'ButtonRelease' in text
+            wait_for(received, 'remote keyboard/mouse events missing')
+        subprocess.run(['xdotool', 'key', 'ctrl+bracketright', 'q'], env=local, check=True)
         wait_for(status.exists, 'viewer did not exit')
         assert before.read_bytes() == after.read_bytes(), 'termios not restored'
         assert status.read_text().strip() == '0', (args.records / 'viewer.log').read_text()
-        print('PASS: VNC connection, Sixel pixels in xterm, and terminal restoration')
+        print('PASS: VNC connection, Sixel pixels, remote keys/mouse, terminal restoration')
 finally:
     for p in reversed(processes):
         if p.poll() is None:

@@ -73,8 +73,8 @@ void Terminal::geometry()
 	int w = 0, h = 0, cw = 0, ch = 0;
 	std::string a = query("\033[14t");
 	std::string b = query("\033[16t");
-	if (sscanf(a.c_str(), "\033[4;%d;%dt", &h, &w) != 2 ||
-	    sscanf(b.c_str(), "\033[6;%d;%dt", &ch, &cw) != 2 ||
+	if (sscanf(a.c_str(), "\033[4;%5d;%5dt", &h, &w) != 2 ||
+	    sscanf(b.c_str(), "\033[6;%5d;%5dt", &ch, &cw) != 2 ||
 	    w <= 0 || h <= 0 || cw <= 0 || ch <= 0 ||
 	    w > 16384 || h > 16384 || cw > 256 || ch > 256 || h <= ch + 12)
 		throw std::runtime_error("xterm must answer pixel and cell size queries");
@@ -126,4 +126,13 @@ void Terminal::leave() noexcept
 	} catch (...) {}
 	tcsetattr(tty, TCSANOW, &saved);
 	active = false;
+}
+
+void Terminal::enableInput()
+{
+	queue("\033[?1003h\033[?1004h\033[?1006h\033[?2004h");
+	if (pixelMouse)
+		queue("\033[?1016h");
+	if (otherKeys >= 0 && otherKeys <= 3)
+		queue("\033[>4;2m");
 }

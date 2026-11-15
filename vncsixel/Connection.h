@@ -2,6 +2,7 @@
 #ifndef VNCSIXEL_CONNECTION_H
 #define VNCSIXEL_CONNECTION_H
 #include "Terminal.h"
+#include "Input.h"
 #include <rfb/CConnection.h>
 #include <network/TcpSocket.h>
 #include <memory>
@@ -14,12 +15,18 @@ public:
 	int fd();
 	void process();
 	void render();
+	bool input(const InputEvent&);
+	void releaseInput();
 	void redraw() { dirty = true; }
 	int displayWidth = 0, displayHeight = 0;
 	bool ready = false;
 private:
 	void bell() override {}
 	void initDone() override;
+	void setCursor(int, int, const core::Point&, const uint8_t*) override;
+	void setCursorPos(const core::Point&) override;
+	void modifiers(unsigned);
+	void status();
 	void resizeFramebuffer() override;
 	void framebufferUpdateEnd() override;
 	void getUserPasswd(std::string*, std::string*) override;
@@ -28,6 +35,10 @@ private:
 	std::unique_ptr<network::TcpSocket> socket;
 	Terminal& terminal;
 	bool dirty = false;
+	bool prefix = false;
+	unsigned latched = 0, held = 0, mouseMods = 0;
+	uint16_t buttons = 0;
+	core::Point pointer = {0, 0};
 };
 }
 #endif
