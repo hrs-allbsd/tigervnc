@@ -19,7 +19,9 @@
 .Sh DESCRIPTION
 .Nm
 connects to a VNC server and displays its framebuffer using SIXEL graphics.
-The image is scaled to fit the terminal without changing the remote desktop.
+Initially the image is scaled to fit the terminal without enlarging a
+smaller desktop or changing the remote desktop.
+Local zoom and pan commands can select a portion of a larger desktop.
 Keyboard and mouse input are forwarded unless
 .Fl ViewOnly
 is selected.
@@ -167,6 +169,20 @@ and Escape or Enter returns to the remote image.
 Quit.
 .It Cm r
 Redraw.
+.It Cm + , =
+Zoom in to the next fixed level.
+.It Cm -
+Zoom out to the preceding fixed level.
+.It Cm f
+Fit the complete remote desktop into the terminal without enlarging it.
+.It Cm 0
+Select pixel-perfect (100%) geometry: one remote pixel per drawing pixel.
+Color quantization still applies.
+.It Cm p
+Toggle edge-follow panning; initially enabled.
+.It Arrow keys
+Pan one quarter of the visible width or height and disable follow.
+Each command requires its own Ctrl+] prefix.
 .It Cm c , a , s
 Toggle the Ctrl, Alt, or Shift modifier latch, respectively.
 .It Cm u
@@ -180,6 +196,30 @@ For Ctrl+Alt+Delete, latch Ctrl and Alt, press Delete, then release with
 Ctrl+] u.
 Ordinary terminal input cannot reliably report physical key releases;
 modifier latches provide explicit control for combinations and drags.
+.Sh ZOOM AND PAN
+Fixed zoom levels are 25, 50, 75, 100, 150, 200, 300 and 400 percent.
+From Fit, zoom commands choose a level relative to the fitted scale.
+Zooming out while Fit is below 25% retains Fit.
+Zoom centers on the last known remote pointer, clipped at desktop edges.
+Before its location is known, the pointer is assumed to be at 0,0.
+Scaling uses nearest-neighbor sampling.
+.Pp
+Follow pans an axis toward the remote pointer when it enters that axis's
+outer 20% of the viewport.
+The middle 60% remains stationary.
+The physical local pointer is not captured or warped, and a stationary
+pointer does not cause continuous panning.
+A fixed viewport remains stationary until a local navigation command.
+Fit has no pan space.
+Zoom and Fit preserve the follow setting.
+.Pp
+The status line shows zoom and follow state.
+Local navigation also works in view-only mode and is not sent as remote
+key input.
+Navigation releases remote drags and modifier latches and cancels queued
+paste before changing the view.
+Resizing preserves fixed zoom and clamps its center, or recomputes Fit.
+Suspend/resume preserves zoom state.
 .Sh ENVIRONMENT
 .Bl -tag -width VNC_PASSWORD
 .It Ev VNC_USERNAME , VNC_PASSWORD

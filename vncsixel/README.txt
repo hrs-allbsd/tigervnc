@@ -44,6 +44,10 @@ Controls:
   Mouse: move, left/middle/right click, drag, vertical wheel
   Ctrl+] then q: quit
   Ctrl+] then r: redraw
+  Ctrl+] then + or = / -: zoom in / out
+  Ctrl+] then f / 0: fit / pixel-perfect (100%)
+  Ctrl+] then p: toggle edge-follow panning
+  Ctrl+] then arrow: pan one quarter of the viewport; disable follow
   Ctrl+] then c/a/s: toggle Ctrl/Alt/Shift latch
   Ctrl+] then u: release all remote keys and buttons
   Ctrl+] twice: send Ctrl+] to the remote side
@@ -819,3 +823,47 @@ vncsixel(1) documents connection syntax, parameters, credentials, local
 commands and terminal limitations.  CMake installs vncsixel/vncsixel.1
 under the configured manual directory.  The FreeBSD port installs it
 regardless of DOCS; use man vncsixel after installing the package.
+
+Zoom and pan
+============
+The initial mode is Fit: preserve the aspect ratio, fit the complete
+remote desktop into the terminal, and do not enlarge a smaller desktop.
+Ctrl+] followed by + (or =) and - selects the next larger/smaller fixed
+level: 25, 50, 75, 100, 150, 200, 300 or 400 percent.  Starting from Fit,
+the next level is selected relative to the current fitted scale; zooming
+out below the smallest step keeps Fit when Fit is already below 25%.
+Ctrl+] f returns to Fit; Ctrl+] 0 selects pixel-perfect (100%), one remote
+pixel per terminal drawing pixel.  This describes geometry; terminal
+palette quantization still applies.  Scaling uses nearest-neighbor
+sampling.  A zoom centers on the last known remote pointer, clipped at
+desktop edges.  If no pointer location has been received, it starts at 0,0.
+
+Pan follow is initially enabled.  In fixed zoom modes, motion into the
+outer 20% on either axis recenters that axis, subject to desktop bounds.
+The middle 60% is a dead zone.  The physical local pointer is not warped
+or captured, and continuous panning while the pointer is stationary is
+not implemented.  Server-advertised cursor position changes can also
+trigger follow.  Ctrl+] p switches between follow and a fixed viewport.
+Ctrl+] then an arrow pans one quarter of the visible width/height and
+turns follow off.  Each arrow command needs its own Ctrl+] prefix.
+Zooming/Fit preserves the selected follow setting.  Fit has no pan space.
+
+The status line shows Zoom Fit (percentage) or a fixed percentage and
+Pan follow/fixed, clipped to terminal columns.  These local controls work
+with ViewOnly and are never sent to the server.  Navigation releases any
+remote drag/modifier latch and cancels pending paste before changing the
+view.  A remote framebuffer or terminal resize clamps the viewport to its
+new bounds; Fit continues to track available space, and fixed zoom retains
+its scale and approximately the same center.  Suspend/resume preserves
+zoom state.  Mouse coordinates and composited cursor pixels use the same
+viewport sampling transform.  Only the visible RGB image is allocated,
+not a magnified copy of the whole desktop; visible snapshots are capped
+at 64M pixels.  The existing terminal output queue limit still applies.
+
+Local regression:
+  python3 vncsixel/tests/zoom-smoke.py /path/to/vncsixel \
+      --report /tmp/zoom.json
+Add --view-only and/or --photo to exercise those modes.  The fixture uses
+only a private synthetic server and xterm.  Fixed palette pixels match an
+independent spatial model exactly; PhotoPalette allows eight channel
+levels for libsixel quantization and terminal percentage conversion.
