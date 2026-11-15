@@ -8,6 +8,7 @@ import random
 from pathlib import Path
 import select
 import signal
+import sys
 import struct
 import subprocess
 import tempfile
@@ -24,13 +25,21 @@ parser.add_argument('--jpeg', action='store_true',
 parser.add_argument('--fragment-updates', action='store_true',
     help='Send a bounded update prefix in small, delayed writes')
 parser.add_argument('--colors', type=int, choices=[8, 256], default=256)
+parser.add_argument('--startup-report', type=Path, help='Private local process diagnostics, including stderr')
+parser.add_argument('--startup-only', action='store_true', help='Stop after initial xterm pixel verification')
 args = parser.parse_args()
+args.report.unlink(missing_ok=True)
+if args.startup_report:
+    args.startup_report.unlink(missing_ok=True)
 spec = importlib.util.spec_from_file_location('fixture', Path(__file__).with_name('rfb-fixture.py'))
 fixture = importlib.util.module_from_spec(spec); spec.loader.exec_module(fixture)
 formats = {'rgb888': None, 'rgb565': (16, 16, 0, 1, 31, 63, 31, 11, 5, 0),
            'big-endian': (32, 24, 1, 1, 255, 255, 255, 0, 8, 16)}
 server = fixture.Server(server_format=formats[args.server_format], fragment_updates=args.fragment_updates)
 processes, checks = [], []
+terminal = xserver = None
+windows, display_name = [], None
+statusfile = None
 width, height = 599, 431
 pixels = bytearray(b'\xff\xff\xff' * width * height)
 for y in range(12): pixels[y * width * 3:(y * width + 12) * 3] = b'\0\0\xff' * 12
@@ -38,10 +47,20 @@ compressor = zlib.compressobj()
 tight_streams = [zlib.compressobj() for _ in range(4)]
 cursor, cursor_size, hotspot, position = b'', (0, 0), (0, 0), (0, 0)
 
+def viewer_status():
+    if statusfile and statusfile.exists():
+        value = statusfile.read_text().strip()
+        if value: return int(value)
+    return None
+
 def wait_for(check, label):
     deadline = time.monotonic() + 15
     while time.monotonic() < deadline:
         if server.error: raise server.error
+        if viewer_status() is not None:
+            raise AssertionError(f'viewer exited ({viewer_status()}) while waiting for {label}')
+        if terminal is not None and terminal.poll() is not None:
+            raise AssertionError(f'xterm exited ({terminal.returncode}) while waiting for {label}')
         if check(): return
         time.sleep(.03)
     raise AssertionError(label)
@@ -138,26 +157,28 @@ def gradient(rgb, w, h):
                 result.append((rgb[(y*w+x)*3+c]-estimate) & 255)
     return bytes(result)
 
-with tempfile.TemporaryDirectory() as directory, open(os.devnull, 'wb') as null:
+with tempfile.TemporaryDirectory() as directory, open(os.devnull, 'wb') as null, \
+        tempfile.TemporaryFile() as xserver_log, tempfile.TemporaryFile() as terminal_log:
     try:
         r, w = os.pipe()
         process = subprocess.Popen(['Xvfb', '-displayfd', str(w), '-screen', '0', '1024x768x24',
-            '-noreset', '-nolisten', 'tcp'], pass_fds=(w,), stdout=null, stderr=null)
+            '-noreset', '-nolisten', 'tcp'], pass_fds=(w,), stdout=null, stderr=xserver_log)
+        xserver = process
         processes.append(process); os.close(w)
         assert select.select([r], [], [], 10)[0]
-        env = dict(os.environ, DISPLAY=':' + os.read(r, 80).decode().strip()); os.close(r)
+        display_name = ':' + os.read(r, 80).decode().strip(); os.close(r)
+        env = dict(os.environ, DISPLAY=display_name)
         for key in ('VNC_USERNAME', 'VNC_PASSWORD'): env.pop(key, None)
-        pidfile, perf = Path(directory)/'pid', Path(directory)/'perf.json'
-        wrapper = 'echo $$ > "$1"; shift; exec "$@"'
+        pidfile, perf, statusfile = [Path(directory)/name for name in ('pid','perf.json','status')]
+        wrapper = 'pidfile=$1; statusfile=$2; shift 2; "$@" <&0 & viewer_pid=$!; echo $viewer_pid > "$pidfile"; wait $viewer_pid; status=$?; echo $status > "$statusfile"; exit $status'
         terminal = subprocess.Popen(['xterm', '-ti', 'vt340', '-geometry', '100x36+0+0',
             '-fa', 'monospace', '-bg', 'black', '-fg', 'white', '-b', '0', '-bw', '0', '-xrm', 'XTerm*allowSendEvents: false',
             '-xrm', 'XTerm*numColorRegisters: ' + str(args.colors), '-e', '/bin/sh', '-c',
-            wrapper, 'protocol', str(pidfile), str(args.viewer.resolve()), '-ViewOnly',
+            wrapper, 'protocol', str(pidfile), str(statusfile), str(args.viewer.resolve()), '-ViewOnly',
             '-MaxFPS=30', '-PerfLog=' + str(perf), *(['-QualityLevel=8'] if args.jpeg else []),
             '127.0.0.1::' + str(server.port)],
-            env=env, stdout=null, stderr=null)
+            env=env, stdout=null, stderr=terminal_log)
         processes.append(terminal)
-        windows = []
         def find_window():
             result = subprocess.run(['xdotool', 'search', '--onlyvisible', '--class', 'XTerm'],
                 env=env, text=True, capture_output=True)
@@ -209,7 +230,21 @@ with tempfile.TemporaryDirectory() as directory, open(os.devnull, 'wb') as null:
             server.update_encoded(rectangles)
             wait_for(lambda: server.sent > before, 'update not sent: ' + label)
             verify(label)
+        def finish():
+            os.kill(int(pidfile.read_text()), signal.SIGTERM); terminal.wait(timeout=10)
+            assert statusfile.read_text().strip()=='0', 'viewer exited unsuccessfully'
+            if args.fragment_updates: assert server.update_writes > server.sent
+            result = {'jpeg': args.jpeg, 'fragment_updates': args.fragment_updates, 'update_writes': server.update_writes,
+                      'checks': checks, 'server_format': args.server_format, 'colors': args.colors,
+                      'negotiated_format': server.client_format or server.server_format,
+                      'viewer': json.loads(perf.read_text()), 'scope': 'independent RGB model vs actual xterm pixels'}
+            args.report.parent.mkdir(parents=True, exist_ok=True)
+            args.report.write_text(json.dumps(result,indent=2)+'\n')
+            print('PASS: ' + ', '.join(checks))
         verify('initial raw image')
+        if args.startup_only:
+            finish()
+            sys.exit(0)
         assert {0, 1, 7, -223, -308, -239, -240, -314, 0x574d5666} <= server.encodings
         assert (server.client_format or server.server_format) == (32, 24, 0, 1, 255, 255, 255, 16, 8, 0)
         update('raw primary colors', [raw(24, 48, 100, 80, b'\xff\0\0'),
@@ -388,19 +423,27 @@ with tempfile.TemporaryDirectory() as directory, open(os.devnull, 'wb') as null:
             payload = b'' if encoding == -223 else struct.pack('!B3xIHHHHI',1,0,0,0,nw,nh,0)
             update('resize preserving pixels ' + str((nw,nh)), [(0,0,nw,nh,encoding,payload)])
             update('resize repaint lower right', [raw(nw-7,nh-5,7,5,b'\xff\0\xff')])
-        os.kill(int(pidfile.read_text()), signal.SIGTERM); terminal.wait(timeout=10)
-        if args.fragment_updates: assert server.update_writes > server.sent
-        result = {'jpeg': args.jpeg, 'fragment_updates': args.fragment_updates, 'update_writes': server.update_writes,
-                  'checks': checks, 'server_format': args.server_format, 'colors': args.colors,
-                  'negotiated_format': server.client_format or server.server_format,
-                  'viewer': json.loads(perf.read_text()), 'scope': 'independent RGB model vs actual xterm pixels'}
-        args.report.parent.mkdir(parents=True, exist_ok=True)
-        args.report.write_text(json.dumps(result,indent=2)+'\n')
-        print('PASS: ' + ', '.join(checks))
+        finish()
     finally:
+        before_cleanup = {'xvfb':xserver.poll() if xserver else None,
+                          'xterm':terminal.poll() if terminal else None,
+                          'viewer':viewer_status()}
         for process in reversed(processes):
             if process.poll() is None:
                 process.terminate()
                 try: process.wait(timeout=5)
                 except subprocess.TimeoutExpired: process.kill(); process.wait()
+        if args.startup_report:
+            def tail(log):
+                log.seek(0, os.SEEK_END)
+                log.seek(max(0,log.tell()-8192))
+                return log.read().decode(errors='replace')
+            args.startup_report.parent.mkdir(parents=True, exist_ok=True)
+            args.startup_report.write_text(json.dumps({'display':display_name,
+                'window_found':bool(windows), 'checks_completed':len(checks),
+                'exit_before_cleanup':before_cleanup,
+                'xvfb_stderr_tail':tail(xserver_log),
+                'xterm_stderr_tail':tail(terminal_log),
+                'scope':'Private local fixture only; stderr may include local process diagnostics'},
+                indent=2)+'\n')
         server.close()

@@ -706,3 +706,32 @@ The old PixelFormat conversion is the reference.  A warmup is discarded,
 timed order alternates, and every RGB output must match.  Output allocation,
 source decoding, quantization, SIXEL generation and terminal painting are
 outside the timings; this is not a complete-viewer speed measurement.
+
+Diagnose private xterm startup
+-----------------------------
+protocol-smoke.py accepts --startup-report /private/startup.json.  It saves
+process exit statuses and the last 8192 bytes of Xvfb/xterm stderr after
+cleanup, plus whether a window was found and how many pixel checks passed.
+The protocol matrix now writes these per-case diagnostics automatically.
+This is only for the synthetic loopback fixture, with no live-server data.
+
+The wrapper records the viewer's own exit status: xterm's exit status may
+not reflect that of its child.  The viewer keeps PTY stdin explicitly even
+though it runs as an asynchronous shell command.  Early viewer/xterm exit
+fails the current wait immediately; normal completion requires viewer
+status zero.  An empty status file is tolerated while the wrapper writes
+it.  A previous success report is removed before each run.
+
+  python3 vncsixel/tests/xterm-startup.py /path/to/vncsixel \
+      --attempts 40 --jobs 2 --report-dir /private/startup-repeat
+  python3 vncsixel/tests/startup-failure.py \
+      --report /private/startup-failure.json
+
+The repeat runner verifies the initial displayed pixels before terminating
+each viewer, cycling 8/256 colors and normal/fragmented updates.  It records
+all attempts without retry and exits unsuccessfully if any attempt fails.
+Its summary includes failures explicitly.  The injection test uses local
+true/false commands instead of the viewer to verify that both successful
+and unsuccessful premature child exits fail startup and remove stale
+success data.  Neither tool diagnoses the original intermittent failure
+by itself; use the captured diagnostics when it next occurs.

@@ -835,3 +835,27 @@ Records: snapshot-port-protocol.json, snapshot-port-photo.json,
 snapshot-local-6k/ and snapshot-real.json.  Multi-hour real-server memory
 stability, representative photo/video tuning and the intermittent test
 xterm startup problem remain open.  No installation or push is performed.
+
+2026-11-15: Preserve xterm startup diagnostics and child status
+------------------------------------------------------------
+A two-worker probe starting Xvfb/xterm without a VNC viewer completes all
+20 attempts.  Forty parallel initial-frame viewer checks and a 600-pixel
+matrix also pass during investigation, so the earlier failure is not
+reproduced and its cause remains unresolved.
+
+Fault injection reveals a diagnostic gap: on this installation xterm can
+exit zero when its child exits one.  protocol-smoke.py now records the
+actual viewer PID and status through its shell wrapper, explicitly keeping
+PTY stdin for the background child.  It detects early child or terminal
+exit while waiting, and requires viewer status zero at normal completion.
+It also removes stale success reports and optionally records bounded
+Xvfb/xterm stderr tails, process statuses and progress.  The protocol
+matrix requests these diagnostics for every case, including failures.
+
+xterm-startup.py repeats the same fixture through initial pixel validation
+with 8/256 colors and normal/fragmented prefixes.  It records every attempt
+without retry.  startup-failure.py injects both true and false children:
+all four premature exits are rejected, the actual child codes are retained,
+and preexisting success files are removed.  After the wrapper changes,
+40/40 two-worker viewer startup checks pass.  No live server or credentials
+are involved.  Runtime code and the revision 18 package are unchanged.

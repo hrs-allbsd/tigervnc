@@ -33,7 +33,8 @@ def run(case):
     report = args.report_dir / (name + '.json')
     report.unlink(missing_ok=True)
     command = [sys.executable, str(script), str(viewer), '--report', str(report),
-               '--server-format', pixel_format, '--colors', str(colors)]
+               '--server-format', pixel_format, '--colors', str(colors),
+               '--startup-report', str(args.report_dir/(name+'-startup.json'))]
     if fragmented: command.append('--fragment-updates')
     if args.jpeg: command.append('--jpeg')
     with (args.report_dir / (name + '.log')).open('w') as log:
