@@ -1061,3 +1061,19 @@ display latency.  Repeated trials and a broader public image corpus remain
 needed before runtime tuning.  Runtime and port revision 18 are unchanged;
 no build, packaging, installation or push is performed for this test-only
 change.  Multi-hour live memory stability and pjm support remain open.
+
+2026-11-15: Validate durable real-server memory capture
+-----------------------------------------------------
+The updated Shared/ViewOnly helper completes 120.109 seconds,
+829 updates and 320 frames with actual child status zero.
+Its 23 flushed RSS samples exactly match the final report, and all
+25 allocator/decoder samples report allocator_error zero.  RSS ranges
+142436..143668 KiB during this short observation.
+Three output-path collision cases are rejected.  An early false viewer
+fails without a success report.  Only numeric metrics are saved; no remote
+input or screenshots are used.  Records: live-durable.json/.log,
+live-durable-rss.jsonl and live-durable-memory.jsonl.  This validates the
+capture procedure, not multi-hour memory stability or the absence of leaks.
+Runtime and port revision 18 remain unchanged.  The consolidated remaining
+work list near the start of this document supersedes older historical
+next-step notes.
