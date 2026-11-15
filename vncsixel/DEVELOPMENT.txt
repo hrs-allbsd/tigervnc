@@ -529,3 +529,19 @@ comparisons, adaptive palette replacement/resize/eight-color regressions,
 authentication and terminal negotiation.  cursor_samples is present and
 nonzero in the cursor fixture.  Packaged binary and docs are compared
 with the validated stage and source files before saving packages/All.
+
+2026-11-15: Bounded delayed-link input measurements
+--------------------------------------------------
+A private loopback TCP relay adds a fixed one-way delay while retaining
+byte order and TCP half-close semantics.  Each direction has a 256 KiB
+queue with read backpressure.  Four transfer tests pass, including a
+2 MiB transfer through 4 KiB queues and a seven-byte queue.  It does not
+model packet loss, congestion, jitter or a real WAN.  Large transfers
+may be limited by the queue window divided by the configured delay.
+
+input-latency.py now separates XTEST-to-RFB receipt, synthetic application
+processing and response-queue-to-xterm painting.  Thirty measured inputs
+per profile pass at 0/50 ms one-way delay and MaxFPS 10/30, with a 25 ms
+application delay.  Every response exceeds the configured minimum total
+delay and all queues remain bounded.  These are local controlled-delay
+observations, not measurements of the user's remote application.

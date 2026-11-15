@@ -22,20 +22,30 @@ import time
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('viewer', type=Path)
 parser.add_argument('--report', type=Path, required=True)
+parser.add_argument('--one-way-ms', type=float, default=0)
+parser.add_argument('--application-ms', type=float, default=0)
 parser.add_argument('--samples', type=int, default=100)
 parser.add_argument('--viewer-option', action='append', default=[])
 args = parser.parse_args()
+if not 0 <= args.one_way_ms <= 500: parser.error('--one-way-ms must be 0..500')
+if not 0 <= args.application_ms <= 1000: parser.error('--application-ms must be 0..1000')
+args.report.unlink(missing_ok=True)
 if args.samples < 5: parser.error('at least five samples are required')
 spec = importlib.util.spec_from_file_location('fixture', Path(__file__).with_name('rfb-fixture.py'))
 fixture = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(fixture)
-replies = []
+replies, arrivals = [], []
 def key(server, down, keysym):
     if down and keysym == ord('a'):
+        arrivals.append(time.monotonic_ns())
+        if args.application_ms: time.sleep(args.application_ms/1000)
         color = b'\0\0\xff\0' if len(replies) % 2 == 0 else b'\0\xff\0\0'
         server.update(96, 156, 96, 78, color * 96 * 78)
         replies.append(time.monotonic_ns())
 server = fixture.Server(on_key=key)
+link_spec = importlib.util.spec_from_file_location('delayed_link', Path(__file__).with_name('delayed-link.py'))
+link_module = importlib.util.module_from_spec(link_spec); link_spec.loader.exec_module(link_module)
+link = link_module.DelayedLink(server.port, args.one_way_ms)
 x = C.CDLL(ctypes.util.find_library('X11'))
 xt = C.CDLL(ctypes.util.find_library('Xtst'))
 def function(library, name, result, *parameters):
@@ -69,7 +79,7 @@ with tempfile.TemporaryDirectory() as directory, open(os.devnull, 'wb') as null:
         terminal = subprocess.Popen(['xterm', '-ti', 'vt340', '-geometry', '100x36',
             '-fa', 'monospace', '-xrm', 'XTerm*allowSendEvents: false', '-e',
             '/bin/sh', '-c', wrapper, 'latency', str(pidfile), str(args.viewer.resolve()),
-            '-PerfLog=' + str(performance), *args.viewer_option, '127.0.0.1::' + str(server.port)], env=env, stdout=null, stderr=null)
+            '-PerfLog=' + str(performance), *args.viewer_option, '127.0.0.1::' + str(link.port)], env=env, stdout=null, stderr=null)
         processes.append(terminal)
         end = time.monotonic() + 10
         win = None
@@ -95,7 +105,7 @@ with tempfile.TemporaryDirectory() as directory, open(os.devnull, 'wb') as null:
             else: time.sleep(.005)
         focus(display, win, 2, 0); flush(display)
         code = keycode(display, ord('a')); assert code
-        samples, dispatch = [], []
+        samples, dispatch, application, response = [], [], [], []
         rng = random.Random(8675309)
         for index in range(args.samples + 2):
             # Vary phase relative to the viewer frame timer.  Two warmups
@@ -107,23 +117,30 @@ with tempfile.TemporaryDirectory() as directory, open(os.devnull, 'wb') as null:
             end = time.monotonic() + 5
             while pixels(origin[0] + 100, origin[1] + 160)[0] != expected:
                 if server.error: raise server.error
+                if link.error: raise link.error
                 assert time.monotonic() < end, 'key response did not paint'
                 time.sleep(.001)
             observed = time.monotonic_ns()
             assert len(replies) == index + 1
             if index >= 2:
                 samples.append((observed - start) / 1e6)
-                dispatch.append((replies[index] - start) / 1e6)
+                dispatch.append((arrivals[index] - start) / 1e6)
+                application.append((replies[index] - arrivals[index]) / 1e6)
+                response.append((observed - replies[index]) / 1e6)
         os.kill(int(pidfile.read_text()), signal.SIGTERM)
         terminal.wait(timeout=10)
         ordered = sorted(samples)
         result = {'samples': args.samples, 'median_ms': statistics.median(samples),
             'p95_ms': ordered[(len(ordered) * 95 + 99) // 100 - 1], 'max_ms': max(samples),
             'min_ms': min(samples), 'rfb_dispatch_median_ms': statistics.median(dispatch),
-            'latencies_ms': samples, 'viewer': json.loads(performance.read_text()),
-            'scope': 'XTEST to xterm XGetImage on local Xvfb, excluding physical scanout/WAN'}
+            'application_median_ms': statistics.median(application),
+            'response_median_ms': statistics.median(response),
+            'one_way_ms': args.one_way_ms, 'configured_application_ms': args.application_ms,
+            'application_ms': application, 'dispatch_ms': dispatch, 'response_ms': response,
+            'link': link.metrics(), 'latencies_ms': samples, 'viewer': json.loads(performance.read_text()),
+            'scope': 'Local XTEST to xterm XGetImage; fixed loopback delay and synthetic application; no real WAN or physical scanout'}
         args.report.write_text(json.dumps(result, indent=2) + '\n')
-        print(json.dumps({k: v for k, v in result.items() if k not in ('latencies_ms', 'viewer')}))
+        print(json.dumps({k: v for k, v in result.items() if k not in ('latencies_ms', 'viewer', 'application_ms', 'dispatch_ms', 'response_ms')}))
     finally:
         if display: close_display(display)
         for process in reversed(processes):
@@ -133,3 +150,4 @@ with tempfile.TemporaryDirectory() as directory, open(os.devnull, 'wb') as null:
                 except subprocess.TimeoutExpired:
                     process.kill(); process.wait()
         server.close()
+        link.close()
