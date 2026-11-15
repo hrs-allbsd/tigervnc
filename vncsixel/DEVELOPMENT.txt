@@ -454,3 +454,24 @@ values remain supported; equal-to-default explicit paths are tracked.
 The private CA fixture covers valid, expired and not-yet-valid leaves,
 non-revoked and revoked leaves, missing/malformed/empty CA and CRL files,
 case-insensitive split options, explicit default paths and empty overrides.
+
+2026-11-15: X.509 server purpose and port revision 11
+--------------------------------------------------
+A clientAuth-only leaf was accepted by the previous peers3 verification.
+vncsixel now requests the serverAuth EKU OID through
+CConnection::getCertificatePurpose().  CSecurityTLS supplies both the
+hostname and purpose to gnutls_certificate_verify_peers().  Other
+frontends retain their existing peers3 verification.  No EKU restriction
+remains valid under GnuTLS policy; clientAuth-only leaves are rejected.
+
+The private Xvnc/PTY matrix passes 34 cases with termios restoration,
+including trusted certificates without EKU, serverAuth leaves and
+clientAuth-only rejection.  The 39 frontend and 273 upstream tests pass;
+normal vncviewer builds and authentication, terminal negotiation and
+19 RFB pixel-comparison cases also pass.  All builds use nice 20.
+
+Port revision 11 backports both policies.  Certificate exceptions,
+expired/stale CRL policy, third-party RSA servers, clean poudriere jail
+validation and long-duration/WAN tests remain pending.  CRL fetching and
+OCSP are not implemented.  All certificate fixtures use temporary local
+servers and dummy credentials; no live trust or credentials are changed.

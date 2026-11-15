@@ -315,9 +315,19 @@ void CSecurityTLS::checkSession()
     throw protocol_error(_("Unsupported certificate type"));
   }
 
-  err = gnutls_certificate_verify_peers3(session,
-                                         client->getServerName(),
-                                         &status);
+  const char* purpose = client->getCertificatePurpose();
+  if (purpose) {
+    gnutls_typed_vdata_st data[2] = {};
+    data[0].type = GNUTLS_DT_DNS_HOSTNAME;
+    data[0].data = (unsigned char*)client->getServerName();
+    data[1].type = GNUTLS_DT_KEY_PURPOSE_OID;
+    data[1].data = (unsigned char*)purpose;
+    err = gnutls_certificate_verify_peers(session, data, 2, &status);
+  } else {
+    err = gnutls_certificate_verify_peers3(session,
+                                           client->getServerName(),
+                                           &status);
+  }
   if (err != 0) {
     vlog.error(_("Server certificate verification failed: %s"),
                gnutls_strerror(err));

@@ -174,6 +174,11 @@ void Connection::checkCertificateFiles(int caStatus, int crlStatus)
 	if (requireCRL && crlStatus < 1)
 		throw std::runtime_error("Cannot load specified X509CRL file");
 }
+const char* Connection::getCertificatePurpose()
+{
+	/* id-kp-serverAuth, also used by GNUTLS_KP_TLS_WWW_SERVER. */
+	return "1.3.6.1.5.5.7.3.1";
+}
 bool Connection::verifyCertificate(unsigned status, const uint8_t*, size_t)
 {
 	return status == 0;

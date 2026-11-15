@@ -441,3 +441,8 @@ clears the requirement; repeated options use the last value.  Normal
 TigerVNC case-insensitive and split/equals option forms are supported.
 A CRL only covers its issuer and contents; it does not enable automatic
 CRL downloading or OCSP.  Keep locally supplied CRLs current.
+
+X.509 verification also requires serverAuth when the leaf certificate
+restricts Extended Key Usage.  A clientAuth-only certificate is rejected.
+Certificates without an EKU restriction retain GnuTLS's normal behavior.
+The existing chain, hostname, validity and revocation checks still apply.

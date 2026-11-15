@@ -191,6 +191,9 @@ namespace rfb {
     // Frontends may throw to reject failed explicit file requirements.
     virtual void checkCertificateFiles(int, int) {}
 
+    // Optional Extended Key Usage OID required of the server certificate.
+    virtual const char* getCertificatePurpose() { return nullptr; }
+
     // verifyCertificate() is called when a certificate is received from
     // the server. Return true if the certificate should be accepted,
     // and false if it should be rejected.

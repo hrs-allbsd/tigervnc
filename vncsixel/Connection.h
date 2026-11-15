@@ -39,6 +39,7 @@ private:
 	void framebufferUpdateStart() override;
 	void getUserPasswd(std::string*, std::string*) override;
 	void checkCertificateFiles(int, int) override;
+	const char* getCertificatePurpose() override;
 	bool requireCA, requireCRL;
 	bool verifyCertificate(unsigned, const uint8_t*, size_t) override;
 	bool verifyHostKey(const uint8_t*, size_t, const char*) override;

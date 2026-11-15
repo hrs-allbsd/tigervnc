@@ -184,7 +184,8 @@ subjectAltName = DNS:localhost
     ca=['openssl','ca','-batch','-config',str(config)]
     for name,extension,dates in [('valid','server',[]),
         ('expired','server',['-startdate','20000101000000Z','-enddate','20010101000000Z']),
-        ('future','server',['-startdate','20990101000000Z','-enddate','21000101000000Z'])]:
+        ('future','server',['-startdate','20990101000000Z','-enddate','21000101000000Z']),
+        ('client','client',[])]:
         subprocess.run([*ca,'-in',str(root/'leaf.csr'),'-out',str(root/(name+'.crt')),
             '-extensions',extension,*dates],stdout=null,stderr=null,check=True)
     subprocess.run([*ca,'-gencrl','-out',str(root/'empty.crl')],stdout=null,stderr=null,check=True)
@@ -194,7 +195,7 @@ subjectAltName = DNS:localhost
     (root/'zero.crl').write_text('')
     (root/'invalid.ca').write_text('invalid CA\n')
     (root/'zero.ca').write_text('')
-    for name,accepted in [('valid',True),('expired',False),('future',False)]:
+    for name,accepted in [('valid',True),('expired',False),('future',False),('client',False)]:
         server,port=start('X509Vnc',certificate=name+'.crt')
         try:
             run(name+' leaf certificate','X509Vnc',port,['-X509CA='+str(root/'ca.crt')],accepted=accepted)
