@@ -13,6 +13,7 @@ if(ENABLE_HOST_CURSOR)
   endif()
 endif()
 install(TARGETS vncsixel DESTINATION ${CMAKE_INSTALL_FULL_BINDIR})
+install(FILES vncsixel.1 DESTINATION ${CMAKE_INSTALL_FULL_MANDIR}/man1)
 
 if(BUILD_TESTING AND GTest_FOUND)
   include(GoogleTest)

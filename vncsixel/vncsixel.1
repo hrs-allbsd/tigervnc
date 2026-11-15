@@ -1,0 +1,240 @@
+.\" SPDX-License-Identifier: GPL-2.0-or-later
+.Dd November 15, 2026
+.Dt VNCSIXEL 1
+.Os
+.Sh NAME
+.Nm vncsixel
+.Nd VNC client with SIXEL graphics for terminals
+.Sh SYNOPSIS
+.Nm
+.Op Ar options
+.Ar host Ns Op : Ns Ar display
+.Nm
+.Op Ar options
+.Ar host Ns :: Ns Ar port
+.Nm
+.Fl -terminal-check
+.Nm
+.Fl -help
+.Sh DESCRIPTION
+.Nm
+connects to a VNC server and displays its framebuffer using SIXEL graphics.
+The image is scaled to fit the terminal without changing the remote desktop.
+Keyboard and mouse input are forwarded unless
+.Fl ViewOnly
+is selected.
+Sessions are shared by default.
+.Pp
+Use a SIXEL-capable xterm with
+.Cm allowSendEvents
+set to false to enable mouse reporting.
+For example:
+.Bd -literal -offset indent
+xterm -ti vt340 -xrm 'XTerm*allowSendEvents: false' \\
+    -e vncsixel host.example.org
+.Ed
+.Pp
+A display number selects TCP port 5900 plus that number.
+Use a double colon to specify a TCP port directly.
+With no display or port, the default is port 5900.
+.Pp
+Parameters accept
+.Fl Ar name Ar value
+or
+.Fl Ar name Ns = Ns Ar value .
+Boolean parameters can be enabled with
+.Fl Ar name
+and disabled with
+.Fl Ar name Ns =0 .
+.Sh OPTIONS
+.Bl -tag -width indent
+.It Fl ViewOnly
+Suppress all remote keyboard and pointer input.
+Disabled by default.
+.It Fl Shared Ns = Ns Ar boolean
+Request a shared session; enabled by default.
+Setting this to 0 requests an exclusive session.
+.It Fl PasswordFile Ar file
+Read a password-only VNC authentication password from a file created by
+.Xr vncpasswd 1 .
+.Fl passwd
+is an alias.
+This is an obfuscated VNC password file, not a plaintext password.
+It is not used by authentication requiring a username.
+.It Fl SecurityTypes Ar list
+Select TigerVNC security types using a comma-separated list.
+For authenticated encrypted sessions, supported choices include
+.Cm X509Vnc , RA2 ,
+and
+.Cm RA2_256 .
+.Cm TLSVnc
+uses anonymous TLS and does not authenticate the server's identity.
+.Cm RA2ne
+and
+.Cm RA2ne_256
+protect authentication only, not subsequent session traffic.
+.It Fl KnownHosts Ar file
+Select the RSA-AES server public-key trust store.
+The parent directory of an explicitly selected file must already exist.
+Changed keys are rejected.
+For an unknown key, verify the displayed fingerprint through a trusted
+channel, then answer
+.Cm yes
+to save it,
+.Cm once
+to accept it for this connection only, or
+.Cm no
+to reject it.
+An empty answer also rejects it.
+.It Fl StrictHostKeyChecking
+Reject unknown RSA-AES server keys without prompting.
+Disabled by default.
+.It Fl X509CA Ar file
+Select an additional PEM CA certificate file for TLS verification.
+An explicitly selected nonempty pathname must refer to a readable,
+nonempty file.
+Untrusted or hostname-mismatched certificates are rejected.
+.It Fl X509CRL Ar file
+Select a PEM certificate revocation list file.
+An explicitly selected nonempty pathname must refer to a readable,
+nonempty file containing currently valid revocation information.
+.It Fl MaxFPS Ar rate
+Limit terminal redraws to 1 through 60 frames per second.
+The default is 10.
+Updates may be combined before a redraw.
+.It Fl PhotoPalette
+Generate an adaptive palette for each changed image on 256-color terminals.
+This uses full-frame output and can increase output size or cause color
+variation as an image moves.
+Disabled by default; ignored on eight-color terminals.
+.It Fl FullFrame
+Disable partial screen updates.
+Disabled by default.
+.It Fl SingleRect
+Use one bounding rectangle instead of sparse changed regions.
+Disabled by default.
+.It Fl QualityLevel Ar level
+Set the Tight JPEG quality hint from 0 (low) through 9 (high).
+The default, \-1, omits the hint.
+.It Fl CompressLevel Ar level
+Set the compression hint from 0 (low) through 9 (high).
+The default, \-1, leaves the server default.
+.It Fl NoJPEG
+Suppress JPEG capability and quality hints.
+Disabled by default.
+This affects network encoding, independently of terminal palette selection.
+.It Fl HideLocalCursor Ns = Ns Ar boolean
+Hide the local X11 pointer when appropriate while drawing the remote cursor.
+Enabled by default when the optional XFixes backend is available.
+The local pointer remains visible in view-only mode or without a usable
+remote cursor shape.
+.It Fl CellSize Ar width Ns x Ns Ar height
+Override terminal character-cell dimensions in pixels.
+.It Fl PixelSize Ar width Ns x Ns Ar height
+Override the terminal drawing area in pixels.
+.It Fl EscapeTimeout Ar milliseconds
+Wait 1 through 1000 milliseconds for an Escape sequence.
+The default is 50.
+.It Fl PasteRate Ar rate
+Limit pasted characters to 1 through 10000 per second.
+The default is 200.
+.It Fl PerfLog Ar file
+Write numeric performance statistics as JSON on exit.
+These are client measurements, not end-to-end input latency.
+.It Fl MemoryLog Ar file
+Write numeric allocator and decoder-buffer samples as JSON lines.
+Allocator byte counts are available on
+.Fx
+when allocator statistics are supported;
+otherwise samples report an allocator error.
+.It Fl MemoryLogInterval Ar seconds
+Set the memory sample interval from 1 through 3600 seconds.
+The default is 5.
+.It Fl -terminal-check
+Probe terminal capabilities, print geometry and color information, and exit.
+.It Fl h , Fl -help
+Print usage information and exit.
+These help options must be used alone.
+.El
+.Sh LOCAL COMMANDS
+Press Ctrl+] followed by one of these keys:
+.Bl -tag -width "Ctrl+]"
+.It Cm h , ?
+Show local help.
+In help, Space or n advances a page, p selects the preceding page,
+and Escape or Enter returns to the remote image.
+.It Cm q
+Quit.
+.It Cm r
+Redraw.
+.It Cm c , a , s
+Toggle the Ctrl, Alt, or Shift modifier latch, respectively.
+.It Cm u
+Release remote keys and buttons and cancel pending input.
+.It Ctrl+]
+Send Ctrl+] to the remote side.
+.El
+.Pp
+Latch state is shown below the image.
+For Ctrl+Alt+Delete, latch Ctrl and Alt, press Delete, then release with
+Ctrl+] u.
+Ordinary terminal input cannot reliably report physical key releases;
+modifier latches provide explicit control for combinations and drags.
+.Sh ENVIRONMENT
+.Bl -tag -width VNC_PASSWORD
+.It Ev VNC_USERNAME , VNC_PASSWORD
+Supply credentials using the same convention as TigerVNC's vncviewer.
+For authentication requiring a username and password, both must be set;
+otherwise both are prompted for.
+Password-only authentication needs only
+.Ev VNC_PASSWORD .
+Empty values count as set.
+.Ev VNC_PASSWORD
+takes precedence over
+.Fl PasswordFile .
+Passwords are not accepted as command-line arguments.
+Interactive usernames are echoed; interactive passwords are not.
+.It Ev XDG_DATA_HOME , HOME
+Determine the default TigerVNC data directory for the RSA-AES trust store.
+.It Ev DISPLAY , WINDOWID
+Identify the local X11 display and terminal window for optional pointer hiding.
+.El
+.Sh FILES
+.Bl -tag -width indent
+.It Pa $XDG_DATA_HOME/tigervnc/vncsixel_rsa_known_hosts
+Default RSA-AES trust store when
+.Ev XDG_DATA_HOME
+is set; otherwise the data directory is
+.Pa $HOME/.local/share/tigervnc ,
+with TigerVNC's legacy
+.Pa $HOME/.vnc
+fallback.
+The store contains public keys, not passwords.
+.El
+.Sh EXIT STATUS
+.Ex -std
+.Sh EXAMPLES
+Connect to display 1 using a VNC password file:
+.Bd -literal -offset indent
+vncsixel -PasswordFile ~/.vnc/passwd host.example.org:1
+.Ed
+.Pp
+Observe a server on TCP port 5902 without forwarding input:
+.Bd -literal -offset indent
+vncsixel -ViewOnly -MaxFPS=30 host.example.org::5902
+.Ed
+.Pp
+Require a previously trusted RSA-AES server key:
+.Bd -literal -offset indent
+vncsixel -SecurityTypes=RA2_256 -StrictHostKeyChecking \\
+    host.example.org
+.Ed
+.Sh SEE ALSO
+.Xr vncpasswd 1 ,
+.Xr vncviewer 1 ,
+.Xr xterm 1
+.Sh AUTHORS
+.An Hiroki Sato Aq Mt hrs@allbsd.org
+.Sh CAVEATS
+Clipboard synchronization, audio and H.264 are not implemented.
+Terminal multiplexers and terminals other than xterm have not been validated.

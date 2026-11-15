@@ -812,3 +812,10 @@ credential input paths.  Interrupted JSONL is partial evidence, not a
 completed test or proof of stability.  No screenshots or remote input are
 used.  Choose --seconds 7200 (or longer) for a separate multi-hour run;
 a 120-second capture validation is not a substitute.
+
+Manual page
+-----------
+vncsixel(1) documents connection syntax, parameters, credentials, local
+commands and terminal limitations.  CMake installs vncsixel/vncsixel.1
+under the configured manual directory.  The FreeBSD port installs it
+regardless of DOCS; use man vncsixel after installing the package.
