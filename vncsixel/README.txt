@@ -756,3 +756,13 @@ Download URL:
 https://assets.science.nasa.gov/dynamicimage/assets/science/esd/climate/2023/12/August-2013_1920x1200.jpg?fit=clip&w=1900
 Downloaded JPEG: 1900x1188, 85972 bytes; SHA256:
 879037687618108a27817dee42fbe014323614f93667c7dc4e8684328db91dca
+
+Add --pan-frames 12 to render twelve additional cyclic horizontal shifts
+at 17 pixels per step.  Every frame must change and stabilize in xterm;
+fixed palettes are also compared against a reference quantizer with one
+channel level of tolerance for terminal percentage conversion.  Reports
+include each frame's RMSE.  Eight-register errors must match with and
+without PhotoPalette.  Totals include the initial blue frame, the original
+image and each shift.  This waits for each frame and is not a video FPS or
+maximum-throughput benchmark.  Uniform/periodic images that do not visibly
+change at a step are unsuitable inputs and time out explicitly.

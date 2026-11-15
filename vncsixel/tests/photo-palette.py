@@ -22,7 +22,11 @@ parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('viewer', type=Path)
 parser.add_argument('--report', type=Path, required=True)
 parser.add_argument('--image', type=Path, help='Local public test image; never a private server capture')
+parser.add_argument('--pan-frames', type=int, default=0,
+    help='Additional cyclic horizontal shifts, 0..60; requires --image')
 args = parser.parse_args()
+if not 0 <= args.pan_frames <= 60 or (args.pan_frames and not args.image):
+    parser.error('--pan-frames must be 0..60 and requires --image')
 args.report.unlink(missing_ok=True)
 spec = importlib.util.spec_from_file_location('fixture',Path(__file__).with_name('rfb-fixture.py'))
 fixture = importlib.util.module_from_spec(spec); spec.loader.exec_module(fixture)
@@ -40,7 +44,28 @@ if args.image:
     metadata = {'kind': 'external image, stretched to fixture dimensions',
         'source_sha256': hashlib.sha256(source).hexdigest(),
         'rgb_sha256': hashlib.sha256(rgb).hexdigest(), 'width': w, 'height': h}
-bgra = b''.join(bytes((rgb[i+2],rgb[i+1],rgb[i],0)) for i in range(0,len(rgb),3))
+def wire(pixels):
+    return b''.join(bytes((pixels[i+2],pixels[i+1],pixels[i],0))
+        for i in range(0,len(pixels),3))
+def fixed_pixels(pixels, colors):
+    tables = []
+    for channel in range(3):
+        levels = 2 if colors == 8 else (4 if channel == 2 else 8)
+        table = []
+        for value in range(256):
+            level = min(range(levels),
+                key=lambda i: (abs(value-i*255//(levels-1)),i))
+            palette = level*255//(levels-1)
+            percent = (palette*100+127)//255
+            # Allow one display channel level for xterm rounding below.
+            table.append((percent*255+50)//100)
+        tables.append(bytes(table))
+    output = bytearray(len(pixels))
+    for channel in range(3):
+        output[channel::3] = pixels[channel::3].translate(tables[channel])
+    return bytes(output)
+
+bgra = wire(rgb)
 results = {}
 for name, photo, colors in [('fixed',False,256),('photo',True,256),('fixed8',False,8),('photo8',True,8)]:
     server = fixture.Server()
@@ -103,12 +128,30 @@ for name, photo, colors in [('fixed',False,256),('photo',True,256),('fixed8',Fal
             gradient = image[0]
             error = rmse(gradient)
             if args.image:
+                if not photo or colors == 8:
+                    assert max(abs(a-b) for a,b in zip(image[0],fixed_pixels(rgb,colors))) <= 1, 'Fixed image pixel mismatch'
+                errors = [error]
+                original = rgb
+                for step in range(1,args.pan_frames+1):
+                    offset = (step*17 % w)*3
+                    rgb = b''.join(original[row*w*3+offset:(row+1)*w*3] +
+                        original[row*w*3:row*w*3+offset] for row in range(h))
+                    previous = image[0]
+                    image[1] = 0
+                    server.update(0,0,w,h,wire(rgb))
+                    wait_for(lambda: stable(lambda data: data != previous),
+                        'pan frame missing')
+                    if not photo or colors == 8:
+                        assert max(abs(a-b) for a,b in zip(image[0],fixed_pixels(rgb,colors))) <= 1, 'Fixed pan pixel mismatch'
+                    errors.append(rmse(image[0]))
+                rgb = original
                 os.kill(int(pidfile.read_text()),signal.SIGTERM)
                 terminal.wait(timeout=10)
                 assert statusfile.read_text().strip() == '0', 'viewer exited unsuccessfully'
                 metrics = json.loads(perf.read_text())
-                assert metrics['updates'] == 2 and metrics['frames'] == 2, metrics
-                results[name] = {'rmse_rgb':error,
+                assert metrics['updates'] == 2+args.pan_frames, metrics
+                assert metrics['frames'] == 2+args.pan_frames, metrics
+                results[name] = {'rmse_rgb':error,'frame_rmse_rgb':errors,
                     'psnr_db':20*math.log10(255/error) if error else None,
                     'viewer':metrics}
                 continue
@@ -160,8 +203,13 @@ for name, photo, colors in [('fixed',False,256),('photo',True,256),('fixed8',Fal
 if not args.image:
     assert results['photo']['rmse_rgb'] < results['fixed']['rmse_rgb']*.5, results
 assert results['photo8']['rmse_rgb'] == results['fixed8']['rmse_rgb']
+if args.image:
+    assert results['photo8']['frame_rmse_rgb'] == results['fixed8']['frame_rmse_rgb']
+    metadata['pan_frames'] = args.pan_frames
+    metadata['pan_step_pixels'] = 17
+    metadata['pacing'] = 'wait for changed stable xterm pixels after every frame; not video FPS'
 args.report.parent.mkdir(parents=True,exist_ok=True)
-args.report.write_text(json.dumps({'scope':('external-image xterm quality; viewer totals include initial blue frame plus test image'
+args.report.write_text(json.dumps({'scope':('external-image xterm quality; viewer totals include initial blue frame plus test image and optional cyclic shifts'
     if args.image else 'generated gradient xterm quality; viewer totals include palette/resize regressions'),
     'fixture':metadata,'results':results},indent=2)+'\n')
 print('PASS: external image rendered in four palette configurations' if args.image else
