@@ -22,11 +22,15 @@ import time
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('viewer', type=Path)
 parser.add_argument('--report', type=Path, required=True)
+parser.add_argument('--seconds', type=float, default=0, help='Minimum loop duration; samples remains a minimum')
+parser.add_argument('--rss-interval', type=float, default=0, help='Optional RSS sampling interval in seconds')
 parser.add_argument('--one-way-ms', type=float, default=0)
 parser.add_argument('--application-ms', type=float, default=0)
 parser.add_argument('--samples', type=int, default=100)
 parser.add_argument('--viewer-option', action='append', default=[])
 args = parser.parse_args()
+if not 0 <= args.seconds <= 86400: parser.error('--seconds must be 0..86400')
+if not 0 <= args.rss_interval <= 60: parser.error('--rss-interval must be 0..60')
 if not 0 <= args.one_way_ms <= 500: parser.error('--one-way-ms must be 0..500')
 if not 0 <= args.application_ms <= 1000: parser.error('--application-ms must be 0..1000')
 args.report.unlink(missing_ok=True)
@@ -107,7 +111,11 @@ with tempfile.TemporaryDirectory() as directory, open(os.devnull, 'wb') as null:
         code = keycode(display, ord('a')); assert code
         samples, dispatch, application, response = [], [], [], []
         rng = random.Random(8675309)
-        for index in range(args.samples + 2):
+        measurement_start = time.monotonic()
+        rss_samples = []
+        next_rss = measurement_start
+        index = 0
+        while index < args.samples + 2 or time.monotonic()-measurement_start < args.seconds:
             # Vary phase relative to the viewer frame timer.  Two warmups
             # allow focus-triggered geometry negotiation to settle.
             time.sleep(rng.uniform(.01, .11))
@@ -127,10 +135,24 @@ with tempfile.TemporaryDirectory() as directory, open(os.devnull, 'wb') as null:
                 dispatch.append((arrivals[index] - start) / 1e6)
                 application.append((replies[index] - arrivals[index]) / 1e6)
                 response.append((observed - replies[index]) / 1e6)
+                if args.rss_interval and time.monotonic() >= next_rss:
+                    rss = int(subprocess.check_output(['ps','-o','rss=','-p',pidfile.read_text().strip()],stderr=subprocess.DEVNULL))
+                    rss_samples.append({'seconds':time.monotonic()-measurement_start,'rss_kib':rss})
+                    next_rss = time.monotonic()+args.rss_interval
+            index += 1
+        deadline = time.monotonic()+5
+        while len(server.key_events) < index*2:
+            if server.error: raise server.error
+            if link.error: raise link.error
+            assert time.monotonic() < deadline, 'missing key releases'
+            time.sleep(.001)
+        assert [(event[1],event[2]) for event in server.key_events] == [(down,ord('a')) for _ in range(index) for down in (1,0)]
         os.kill(int(pidfile.read_text()), signal.SIGTERM)
         terminal.wait(timeout=10)
         ordered = sorted(samples)
-        result = {'samples': args.samples, 'median_ms': statistics.median(samples),
+        result = {'samples': len(samples), 'minimum_samples': args.samples,
+            'measurement_seconds': time.monotonic()-measurement_start,
+            'key_events': len(server.key_events), 'rss_samples': rss_samples, 'median_ms': statistics.median(samples),
             'p95_ms': ordered[(len(ordered) * 95 + 99) // 100 - 1], 'max_ms': max(samples),
             'min_ms': min(samples), 'rfb_dispatch_median_ms': statistics.median(dispatch),
             'application_median_ms': statistics.median(application),
@@ -140,7 +162,7 @@ with tempfile.TemporaryDirectory() as directory, open(os.devnull, 'wb') as null:
             'link': link.metrics(), 'latencies_ms': samples, 'viewer': json.loads(performance.read_text()),
             'scope': 'Local XTEST to xterm XGetImage; fixed loopback delay and synthetic application; no real WAN or physical scanout'}
         args.report.write_text(json.dumps(result, indent=2) + '\n')
-        print(json.dumps({k: v for k, v in result.items() if k not in ('latencies_ms', 'viewer', 'application_ms', 'dispatch_ms', 'response_ms')}))
+        print(json.dumps({k: v for k, v in result.items() if k not in ('latencies_ms', 'viewer', 'application_ms', 'dispatch_ms', 'response_ms', 'rss_samples')}))
     finally:
         if display: close_display(display)
         for process in reversed(processes):

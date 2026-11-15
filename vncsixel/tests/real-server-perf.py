@@ -19,9 +19,13 @@ parser.add_argument('viewer', type=Path)
 parser.add_argument('--credentials', type=Path, required=True)
 parser.add_argument('--report', type=Path, required=True)
 parser.add_argument('--seconds', type=int, default=20)
+parser.add_argument('--rss-interval', type=float, default=1)
 parser.add_argument('--geometry', default='160x50')
 parser.add_argument('--viewer-option', action='append', default=[])
 args = parser.parse_args()
+if not .1 <= args.rss_interval <= 60:
+    parser.error('--rss-interval must be .1..60 seconds')
+args.report.unlink(missing_ok=True)
 if args.seconds < 1:
     parser.error('--seconds must be positive')
 args.report.parent.mkdir(parents=True, exist_ok=True)
@@ -68,16 +72,26 @@ with tempfile.TemporaryDirectory() as directory, open(os.devnull, 'wb') as null:
             assert time.monotonic() < deadline, 'viewer launch timeout'
             time.sleep(.05)
         viewer_pid = int(pidfile.read_text())
-        deadline = time.monotonic() + args.seconds
+        started = time.monotonic()
+        deadline = started + args.seconds
+        next_rss = started + 5
+        rss_samples = []
         while time.monotonic() < deadline:
             assert terminal.poll() is None, 'viewer exited before measurement completed'
+            if time.monotonic() >= next_rss:
+                rss = int(subprocess.check_output(['ps','-o','rss=','-p',str(viewer_pid)],stderr=subprocess.DEVNULL))
+                rss_samples.append({'seconds':time.monotonic()-started,'rss_kib':rss})
+                next_rss = time.monotonic()+args.rss_interval
             time.sleep(.1)
         os.kill(viewer_pid, signal.SIGTERM)
         terminal.wait(timeout=15)
         viewer_pid = None
         data = json.loads(args.report.read_text())
         assert data['frames'] > 0 and data['remote_width'] > 0, 'no framebuffer rendered'
-        print(json.dumps(data, sort_keys=True))
+        data['rss_samples'] = rss_samples
+        data['rss_warmup_seconds'] = 5
+        args.report.write_text(json.dumps(data,indent=2)+'\n')
+        print(json.dumps({k:v for k,v in data.items() if k!='rss_samples'}, sort_keys=True))
     finally:
         if viewer_pid is not None:
             try: os.kill(viewer_pid, signal.SIGTERM)

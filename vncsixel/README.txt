@@ -524,3 +524,39 @@ Transparent pixels are counted but do not change the background.
 It is not an encoded pixel count or a measure of server input latency.
 The protocol fixture includes alpha endpoints/intermediate values,
 background changes, movement, clipping, replacement and cursor resize.
+
+Controlled-delay and sustained input checks
+------------------------------------------
+The loopback-only delayed-link fixture adds fixed delay independently in
+each direction.  Its bounded FIFO queues apply TCP backpressure rather
+than dropping data.  This models neither a real WAN's congestion/loss nor
+physical display scanout; a small queue window can also limit throughput.
+The synthetic application's callback delay is measured separately.
+
+  python3 vncsixel/tests/delayed-link-test.py
+  python3 vncsixel/tests/latency-matrix.py /path/to/vncsixel \
+      --report-dir /private/delayed-latency --samples 30
+
+The matrix runs sequentially at 0/50 ms one-way delay and MaxFPS 10/30,
+with a default 25 ms application delay.  Reports separate XTEST-to-RFB
+receipt (rfb_dispatch_median_ms), receipt-to-response queueing and
+response-to-xterm paint.  Timing ends at XGetImage, before physical scanout.
+The two initial inputs are warmups; every key-down/release is checked.
+
+Run a minimum-duration local input regression with optional RSS sampling:
+
+  python3 vncsixel/tests/input-latency.py /path/to/vncsixel \
+      --samples 5 --seconds 180 --rss-interval 1 \
+      --one-way-ms 50 --application-ms 25 --viewer-option=-MaxFPS=30 \
+      --report /private/delayed-soak.json
+
+--samples remains a minimum when --seconds is set.  The duration includes
+the two warmups, which are excluded from latency statistics.  RSS samples
+contain elapsed seconds and KiB, and are disabled by default in the local
+latency test to avoid adding sampling overhead to short benchmarks.
+
+real-server-perf.py also records numeric RSS samples after a five-second
+warmup (default interval one second, adjustable with --rss-interval).
+It retains shared/ViewOnly operation in its private xterm.  Synthetic keys are
+injected only into the private local fixture.  Short regressions
+do not establish multi-hour memory stability or remote-application latency.

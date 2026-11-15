@@ -108,8 +108,9 @@ Verification
 
 Remaining work, in order
 ------------------------
-1. Remote application/WAN input latency and long-duration tests;
-   broader server interoperability and representative cursor workloads.
+1. Real WAN/remote-application input latency and multi-hour runs;
+   investigate the real-server RSS increase after the initial warmup.
+   Broader server interoperability and representative cursor workloads.
    Semitransparent cursors, Tight/JPEG,
    Hextile/ZRLE, CopyRect and resize have a 12-configuration pixel matrix.
 2. Representative photograph/video workloads and further tuning of the
@@ -545,3 +546,32 @@ per profile pass at 0/50 ms one-way delay and MaxFPS 10/30, with a 25 ms
 application delay.  Every response exceeds the configured minimum total
 delay and all queues remain bounded.  These are local controlled-delay
 observations, not measurements of the user's remote application.
+
+2026-11-15: Sustained input and passive real-server RSS samples
+------------------------------------------------------------
+Input measurements now support a minimum duration and optional RSS
+sampling.  All key-down/release events must arrive in order.  The
+sequential latency-matrix.py runner preserves per-profile logs/results.
+Five relay tests pass, including propagation of target connection errors.
+
+A 180.129 s delayed-input regression completes 882 measured responses
+plus two warmups, with all 1768 key events received.  One-way delay is
+50 ms, synthetic application delay 25 ms and MaxFPS 30.  Median response
+is 142.365 ms, p95 148.912 ms, maximum 154.654 ms.  Viewer RSS ranges
+18948..19064 KiB; the final sample is 24 KiB below the first.  Queue
+payloads stay within the 256 KiB per-direction limit.
+
+A concurrent 180.073 s real-server shared/ViewOnly sample processes 1320
+updates and renders 569 frames, skipping 543 unchanged snapshots.
+RSS samples after the five-second warmup rise from 149264 to 150972 KiB.
+1388 KiB of the increase occurs before 30 seconds; a further 320 KiB
+appears over the remaining interval.  Its cause is unresolved.  This
+short run neither demonstrates a leak nor proves multi-hour stability.
+No remote input or screenshot is forwarded/captured; only numeric memory
+and performance data are retained.  Concurrent workload affects timings.
+
+The viewer runtime is unchanged and port revision 14 remains current.
+Real WAN behavior, remote-application input and multi-hour/RSS investigation
+remain open.  Reproduction commands are in README.txt; reports are in
+records/delayed-latency/, delayed-soak.json, viewonly-soak.json and
+soak-summary.json in the project directory.

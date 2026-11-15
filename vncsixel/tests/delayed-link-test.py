@@ -57,6 +57,16 @@ class RelayTest(unittest.TestCase):
     def test_zero_delay_and_tiny_queue(self):
         self.exchange(bytes(range(256)),0,7)
 
+    def test_target_failure_is_reported(self):
+        # Reserve a loopback port without listening, forcing connect refusal.
+        with socket.socket() as unavailable:
+            unavailable.bind(('127.0.0.1',0))
+            relay=module.DelayedLink(unavailable.getsockname()[1])
+            with socket.create_connection(('127.0.0.1',relay.port),5) as client:
+                client.settimeout(5)
+                self.assertEqual(client.recv(1),b'')
+            with self.assertRaises(ConnectionRefusedError):relay.close()
+
     def test_stop_without_client(self):
         relay=module.DelayedLink(1,10)
         relay.close()
