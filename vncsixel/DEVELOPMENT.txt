@@ -873,3 +873,36 @@ startup-failure.json, startup-injected-failure/ and startup-investigation/.
 C++ builds/tests and port packaging are not repeated for this test-only
 change.  Port revision 18 remains current; multi-hour live-server stability
 and representative image/video tuning remain open.
+
+2026-11-15: Measure a public photographic palette fixture
+--------------------------------------------------------
+photo-palette.py accepts --image and records SHA256 for the input and its
+converted 599x431 sRGB pixels.  Arbitrary images need not satisfy the warm
+gradient quality threshold.  It checks screenshot length and the viewer's
+actual child status, removes stale reports and retains numeric data only.
+The external-image mode requires exactly two updates and rendered frames:
+initial blue plus the public test photograph.  Default gradient mode keeps
+the existing palette replacement, subtle change, resize and skip checks.
+
+NASA's Earthrise (Apollo 8, William Anders; NASA source credit) is cached
+outside Git.  README.txt records the source page, usage guidelines, exact
+URL and SHA256.  The downloaded 1900x1188 JPEG is stretched to 599x431;
+this is a single photographic fixture with a large black background, not
+a representative photo/video corpus or a live desktop measurement.
+
+Actual xterm results, fixed / PhotoPalette with 256 registers:
+  RGB RMSE:      8.081924 / 4.059669
+  PSNR dB:       29.9805 / 35.9610
+  Encoded bytes: 44590 / 110212
+The two-frame totals show about 2.47x output for about 6 dB better PSNR.
+Palette generation totals 1.074 ms in adaptive mode.  These single short
+runs do not establish a speed advantage.  Eight-register fixed/adaptive
+results match exactly: RMSE 34.194 and 5934 bytes.  The separate default
+gradient run passes all four configurations and palette/resize checks.
+
+Records: earthrise-palette.json, earthrise-palette.log and
+photo-external-regression.json/.log.  Runtime code is unchanged; port
+revision 18 remains current and is not rebuilt for this fixture change.
+Next: broaden public photographic inputs and controlled motion workloads
+before choosing palette/encoding tuning.  Multi-hour real-server memory
+stability and pjm integration also remain open.  No push or install.
