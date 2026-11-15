@@ -1,13 +1,18 @@
 #!/usr/bin/env python3
 """Local deterministic raw-RFB server for renderer tests (no credentials)."""
+import select
 import socket
 import struct
 import threading
+import time
 
 
 class Server:
-    def __init__(self, width=599, height=431):
+    def __init__(self, width=599, height=431, on_key=None):
         self.width, self.height = width, height
+        self.on_key = on_key
+        self.key_events = []
+        self.requested = False
         self.listener = socket.socket()
         self.listener.bind(('127.0.0.1', 0))
         self.listener.listen()
@@ -35,6 +40,7 @@ class Server:
         try:
             self.conn, _ = self.listener.accept()
             conn = self.conn
+            conn.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
 
             def receive(n):
                 data = b''
@@ -55,6 +61,16 @@ class Server:
             conn.sendall(struct.pack('!HHBBBBHHHBBB3xI', self.width, self.height,
                 32, 24, 0, 1, 255, 255, 255, 16, 8, 0, len(name)) + name)
             while not self.closed:
+                with self.condition:
+                    if self.requested and self.pending is not None:
+                        x, y, w, h, data = self.pending
+                        conn.sendall(struct.pack('!BBHHHHHi', 0, 0, 1, x, y, w, h, 0) + data)
+                        self.pending = None
+                        self.requested = False
+                        self.sent += 1
+                        self.condition.notify_all()
+                if not select.select([conn], [], [], .005)[0]:
+                    continue
                 message = receive(1)[0]
                 if message == 0:
                     receive(19)  # SetPixelFormat
@@ -63,15 +79,13 @@ class Server:
                     receive(count * 4)
                 elif message == 3:
                     receive(9)
-                    with self.condition:
-                        self.condition.wait_for(lambda: self.closed or self.pending is not None)
-                        if self.closed:
-                            break
-                        x, y, w, h, data = self.pending
-                        conn.sendall(struct.pack('!BBHHHHHi', 0, 0, 1, x, y, w, h, 0) + data)
-                        self.pending = None
-                        self.sent += 1
-                        self.condition.notify_all()
+                    self.requested = True
+                elif message == 4 and self.on_key is not None:
+                    down, key = struct.unpack('!B2xI', receive(7))
+                    self.key_events.append((time.monotonic_ns(), down, key))
+                    self.on_key(self, down, key)
+                elif message == 5 and self.on_key is not None:
+                    receive(5)  # Cleanup/mouse events in interactive tests
                 else:
                     raise AssertionError('unexpected client message: ' + str(message))
         except (EOFError, OSError):
@@ -84,6 +98,10 @@ class Server:
             self.closed = True
             self.condition.notify_all()
         if self.conn:
+            try:
+                self.conn.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
             self.conn.close()
         self.listener.close()
         self.thread.join(timeout=3)
