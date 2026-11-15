@@ -976,3 +976,45 @@ frame coalescing before throughput claims are meaningful.  Runtime and
 port revision 18 remain unchanged; no build/package/install/push is done
 for this test-only change.  Broader image coverage and multi-hour real
 server memory stability remain open.
+
+2026-11-15: Pace photographic updates independently of capture
+------------------------------------------------------------
+--pan-rate 1..120 requires --return-image.  Frame conversion finishes
+before the producer clock starts; each update then uses an absolute
+monotonic deadline without an intermediate screenshot.  A bounded single
+pending server slot provides backpressure rather than dropping updates.
+Actual queue timestamps and maximum lateness are recorded.  After sending,
+fixed final pixels must match their reference within terminal rounding;
+adaptive final observation requires a changed stable image.  All modes
+then require exact return-to-original pixels.  No independent adaptive
+last-frame oracle is claimed.
+
+Earthrise at 15 Hz (30 shifts) and 60 Hz (60 shifts), MaxFPS=30:
+  15 Hz fixed : 33 updates, 33 frames, 5.182 ms late
+  15 Hz photo : 33 updates, 33 frames, 5.105 ms late
+  15 Hz fixed8: 33 updates, 33 frames, 5.100 ms late
+  15 Hz photo8: 33 updates, 33 frames, 5.100 ms late
+  60 Hz fixed : 63 updates, 32 frames, 3.952 ms late
+  60 Hz photo : 63 updates, 33 frames, 4.078 ms late
+  60 Hz fixed8: 63 updates, 32 frames, 4.153 ms late
+  60 Hz photo8: 63 updates, 32 frames, 4.165 ms late
+
+Counts include the blue frame, original photograph and final return.
+The low-rate run renders all updates; the high-rate run processes every
+update while producing fewer frames, consistent with MaxFPS aggregation.
+This difference is not a count of terminal frames observed as dropped.
+final_observed_seconds includes screenshot/stability polling and cannot
+be interpreted as display latency.  These local Raw-RFB trials do not
+measure WAN behavior or maximum throughput; only the last fixed frame
+and the return are checked during paced runs.  There is no per-frame
+quality or temporal observation in paced mode.
+
+The separate twelve-step sequential temporal regression passes all four
+configurations (60 frames) with exact return output.  Three invalid paced
+argument cases are rejected before viewer startup.  Records:
+earthrise-paced15.json/.log, earthrise-paced60.json/.log and
+paced-temporal-regression.json/.log.  Runtime and port revision 18 remain
+unchanged; no build/package/install/push is done for this test-only change.
+Next work includes an independent adaptive final-frame oracle, repeated
+paced trials and broader images before runtime tuning.  Multi-hour live
+memory stability and pjm integration also remain open.
