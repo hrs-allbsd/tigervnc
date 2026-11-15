@@ -30,7 +30,8 @@ before entering raw mode.  Trusted TLS certificates are accepted; invalid
 certificates and RSA-AES host keys without a trust decision are rejected.
 There is no certificate override or host-key store yet.
 
-xterm must support Sixel and answer pixel/cell-size queries.  A terminal
+xterm must support Sixel.  Pixel/cell-size queries are used unless
+-PixelSize WxH and -CellSize WxH explicitly supply the missing dimensions.  A terminal
 self-check is available with --terminal-check.  Avoid tmux/screen in this
 initial version.  The allowSendEvents resource must be false: xterm
 otherwise suppresses mouse reporting even if the mouse modes are set.
@@ -93,8 +94,8 @@ Current limits and follow-up work:
   during resize when old and new buffers coexist.  Encoded output is limited
   to 32 MiB.
   The UI is single-threaded; encoding a large frame can delay input.
-* Capability queries have a 250 ms response budget and require an xterm
-  with pixel-size reports.  No manual geometry override is implemented.
+* Capability queries finish on a complete reply, with a 250 ms response
+  deadline.  Manual PixelSize/CellSize overrides support missing reports.
 * The initial palette is deliberately simple; photograph quality is limited.
 * Clipboard synchronization, audio, H.264 and terminal multiplexers are
   outside this version.  Long paste is streamed as character key pairs.
@@ -160,3 +161,21 @@ for black-text erasure, adjacent colors, and the final lower-right band.
 The vertical origin uses lcm(cell height, 6), including 13-pixel cells.
 Every DCS includes its palette.  Only the last queued snapshot is cached;
 new snapshots wait until the current output queue is completely drained.
+
+Terminal capabilities
+=====================
+XTSMGRAPHICS queries check available color registers and graphics bounds.
+The renderer uses 256 colors when available, or an explicit eight-color
+RGB palette when the terminal reports 8..255 registers.  Fewer than eight
+registers are rejected.  If the optional color query is unsupported, the
+original 256-color baseline is retained.  Graphics bounds cap the drawing
+area without guessing a cell size.  Completed replies return immediately.
+
+  vncsixel -PixelSize=960x650 -CellSize=6x13 host
+  vncsixel --terminal-check
+
+For automated negotiation/restore tests without X11:
+
+  python3 vncsixel/tests/terminal-probe.py /path/to/vncsixel
+
+Add --colors 8 to damage-smoke.py to verify the eight-color path in xterm.

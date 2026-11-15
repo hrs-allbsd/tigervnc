@@ -29,6 +29,7 @@ int main(int argc, char** argv)
 		    "-PasswordFile file (alias -passwd): vncpasswd-format file.\n"
 		    "VNC_USERNAME and VNC_PASSWORD: same environment as vncviewer.\n"
 		    "-ViewOnly: suppress remote input; -Shared=0: exclusive session.\n"
+		    "-CellSize WxH, -PixelSize WxH: override terminal geometry.\n"
 		    "-FullFrame: disable partial updates for comparison or fallback.\n"
 		    "-PerfLog file: numeric performance summary in JSON.\n"
 		    "Run in xterm -ti vt340 with allowSendEvents:false.\n"
@@ -65,9 +66,10 @@ int main(int argc, char** argv)
 		sixelvnc::Terminal terminal;
 		if (strcmp(host, "--terminal-check") == 0) {
 			terminal.enter();
-			fprintf(stderr, "SIXEL terminal: %dx%d, cells %dx%d, pixel mouse %s\n",
+			fprintf(stderr, "SIXEL terminal: %dx%d, cells %dx%d, pixel mouse %s, colors %d\n",
 			    terminal.width, terminal.height, terminal.cellWidth,
-			    terminal.cellHeight, terminal.pixelMouse ? "yes" : "no");
+			    terminal.cellHeight, terminal.pixelMouse ? "yes" : "no",
+			    terminal.paletteColors);
 			return 0;
 		}
 		sixelvnc::Connection connection(host, terminal);

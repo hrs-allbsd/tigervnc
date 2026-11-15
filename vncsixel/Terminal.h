@@ -23,6 +23,7 @@ public:
 	int fd() const { return tty; }
 	int width = 0, height = 0, cellWidth = 0, cellHeight = 0;
 	bool pixelMouse = false;
+	int paletteColors = 256;
 	uint64_t writtenBytes = 0, peakQueueBytes = 0, blockedWrites = 0;
 private:
 	std::string query(const char*);

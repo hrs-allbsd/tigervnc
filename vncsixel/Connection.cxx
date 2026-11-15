@@ -204,7 +204,11 @@ void Connection::render()
 	}
 	std::vector<uint8_t> indexed(static_cast<size_t>(displayWidth) * displayHeight);
 	for (size_t i = 0; i < indexed.size(); i++)
-		indexed[i] = rgb332(rgb[i * 3], rgb[i * 3 + 1], rgb[i * 3 + 2]);
+		indexed[i] = terminal.paletteColors == 256 ?
+		    rgb332(rgb[i * 3], rgb[i * 3 + 1], rgb[i * 3 + 2]) :
+		    ((rgb[i * 3] >= 128 ? 4 : 0) |
+		    (rgb[i * 3 + 1] >= 128 ? 2 : 0) |
+		    (rgb[i * 3 + 2] >= 128 ? 1 : 0));
 	DamageRect rect = damage(previousFrame, indexed, displayWidth,
 	    displayHeight, terminal.cellWidth, terminal.cellHeight,
 	    fullFrame || forceFull || displayWidth != oldWidth ||
@@ -233,12 +237,18 @@ void Connection::render()
 	Encoded encoded;
 	if (SIXEL_FAILED(sixel_output_new(&output, appendSixel, &encoded, nullptr)))
 		throw std::runtime_error("Cannot create SIXEL output");
-	if (SIXEL_FAILED(sixel_dither_new(&dither, 256, nullptr))) {
+	if (SIXEL_FAILED(sixel_dither_new(&dither, terminal.paletteColors, nullptr))) {
 		sixel_output_unref(output);
 		throw std::runtime_error("Cannot create SIXEL palette");
 	}
 	unsigned char palette[256 * 3];
-	for (int i = 0; i < 256; i++) {
+	for (int i = 0; i < terminal.paletteColors; i++) {
+		if (terminal.paletteColors == 8) {
+			palette[i * 3] = i & 4 ? 255 : 0;
+			palette[i * 3 + 1] = i & 2 ? 255 : 0;
+			palette[i * 3 + 2] = i & 1 ? 255 : 0;
+			continue;
+		}
 		palette[i * 3] = ((i >> 5) & 7) * 255 / 7;
 		palette[i * 3 + 1] = ((i >> 2) & 7) * 255 / 7;
 		palette[i * 3 + 2] = (i & 3) * 255 / 3;

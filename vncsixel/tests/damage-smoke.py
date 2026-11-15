@@ -14,6 +14,7 @@ import time
 parser = argparse.ArgumentParser()
 parser.add_argument('viewer', type=Path)
 parser.add_argument('--records', type=Path, required=True)
+parser.add_argument('--colors', type=int, default=256)
 args = parser.parse_args()
 args.records.mkdir(parents=True, exist_ok=True)
 spec = importlib.util.spec_from_file_location('fixture', Path(__file__).with_name('rfb-fixture.py'))
@@ -45,7 +46,8 @@ with tempfile.TemporaryDirectory() as directory, open(os.devnull, 'wb') as null:
         pidfile = Path(directory) / 'pid'
         wrapper = 'echo $$ > "$1"; exec "$2" -ViewOnly -PerfLog="$3" "$4" 2> "$5"'
         terminal = subprocess.Popen(['xterm', '-ti', 'vt340', '-geometry', '100x36',
-            '-fa', 'monospace', '-xrm', 'XTerm*allowSendEvents: false', '-e',
+            '-fa', 'monospace', '-xrm', 'XTerm*allowSendEvents: false',
+            '-xrm', 'XTerm*numColorRegisters: ' + str(args.colors), '-e',
             '/bin/sh', '-c', wrapper, 'damage', str(pidfile), str(args.viewer.resolve()),
             str(report), '127.0.0.1::' + str(server.port), str(args.records.resolve() / 'viewer.log')], env=env, stdout=null, stderr=null)
         processes.append(terminal)

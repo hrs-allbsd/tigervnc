@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 #include "Terminal.h"
+#include <core/Configuration.h>
 #include <algorithm>
 #include <cerrno>
 #include <chrono>
@@ -11,6 +12,17 @@
 
 using namespace sixelvnc;
 using Clock = std::chrono::steady_clock;
+namespace {
+core::StringParameter cellSize("CellSize", "Override terminal cell size: WxH", "");
+core::StringParameter pixelSize("PixelSize", "Override terminal pixel area: WxH", "");
+void dimensions(const char* value, int& width, int& height)
+{
+	int used = 0;
+	if (sscanf(value, "%5dx%5d%n", &width, &height, &used) != 2 ||
+	    value[used] != '\0')
+		throw std::runtime_error("Terminal dimensions must be WxH");
+}
+}
 
 Terminal::Terminal()
 {
@@ -56,6 +68,15 @@ void Terminal::flush()
 }
 std::string Terminal::query(const char* text)
 {
+	const char* prefix = "\033[?";
+	char final = 'c';
+	std::string request(text);
+	if (request == "\033[14t") { prefix = "\033[4;"; final = 't'; }
+	else if (request == "\033[16t") { prefix = "\033[6;"; final = 't'; }
+	else if (request == "\033[?1016$p") { prefix = "\033[?1016;"; final = 'y'; }
+	else if (request == "\033[?4m") { prefix = "\033[>4;"; final = 'm'; }
+	else if (request == "\033[?1;1;0S") { prefix = "\033[?1;"; final = 'S'; }
+	else if (request == "\033[?2;1;0S") { prefix = "\033[?2;"; final = 'S'; }
 	queue(text);
 	std::string answer;
 	auto end = Clock::now() + std::chrono::milliseconds(250);
@@ -70,15 +91,13 @@ std::string Terminal::query(const char* text)
 			answer.append(buffer, n);
 			if (answer.size() > 4096)
 				throw std::runtime_error("Oversized terminal response");
+			size_t begin = answer.find(prefix);
+			if (begin != std::string::npos &&
+			    answer.find(final, begin) != std::string::npos)
+				break;
 		}
 	}
-	const char* prefix = "\033[?";
-	char final = 'c';
-	std::string request(text);
-	if (request == "\033[14t") { prefix = "\033[4;"; final = 't'; }
-	else if (request == "\033[16t") { prefix = "\033[6;"; final = 't'; }
-	else if (request == "\033[?1016$p") { prefix = "\033[?1016;"; final = 'y'; }
-	else if (request == "\033[?4m") { prefix = "\033[>4;"; final = 'm'; }
+
 	size_t start = answer.find(prefix);
 	size_t finish = start == std::string::npos ? start : answer.find(final, start);
 	if (finish == std::string::npos) {
@@ -94,13 +113,30 @@ std::string Terminal::query(const char* text)
 void Terminal::geometry()
 {
 	int w = 0, h = 0, cw = 0, ch = 0;
-	std::string a = query("\033[14t");
-	std::string b = query("\033[16t");
-	if (sscanf(a.c_str(), "\033[4;%5d;%5dt", &h, &w) != 2 ||
-	    sscanf(b.c_str(), "\033[6;%5d;%5dt", &ch, &cw) != 2 ||
-	    w <= 0 || h <= 0 || cw <= 0 || ch <= 0 ||
+	const char* pixels = pixelSize;
+	const char* cells = cellSize;
+	if (*pixels)
+		dimensions(pixels, w, h);
+	else {
+		std::string a = query("\033[14t");
+		sscanf(a.c_str(), "\033[4;%5d;%5dt", &h, &w);
+	}
+	if (*cells)
+		dimensions(cells, cw, ch);
+	else {
+		std::string b = query("\033[16t");
+		sscanf(b.c_str(), "\033[6;%5d;%5dt", &ch, &cw);
+	}
+	if (w <= 0 || h <= 0 || cw <= 0 || ch <= 0 ||
 	    w > 16384 || h > 16384 || cw > 256 || ch > 256 || h <= ch + 12)
-		throw std::runtime_error("xterm must answer pixel and cell size queries");
+		throw std::runtime_error("Invalid terminal geometry; use -PixelSize and -CellSize if queries fail");
+	int gw = 0, gh = 0;
+	std::string graphics = query("\033[?2;1;0S");
+	if (sscanf(graphics.c_str(), "\033[?2;0;%5d;%5dS", &gw, &gh) == 2 &&
+	    gw > 0 && gh > ch + 12) {
+		w = std::min(w, gw);
+		h = std::min(h, gh);
+	}
 	width = w;
 	height = ((h - ch - 6) / 6) * 6;
 	cellWidth = cw;
@@ -117,6 +153,13 @@ void Terminal::enter()
 		std::string da = query("\033[c");
 		if (da.find(";4;") == std::string::npos && da.find(";4c") == std::string::npos)
 			throw std::runtime_error("SIXEL capability missing; use xterm -ti vt340");
+		int colors = 0;
+		std::string registers = query("\033[?1;1;0S");
+		if (sscanf(registers.c_str(), "\033[?1;0;%5dS", &colors) == 1) {
+			if (colors < 8)
+				throw std::runtime_error("Terminal needs at least 8 SIXEL colors");
+			paletteColors = colors < 256 ? 8 : 256;
+		}
 		geometry();
 		std::string mouse = query("\033[?1016$p");
 		pixelMouse = mouse.find(";2$y") != std::string::npos || mouse.find(";1$y") != std::string::npos;
