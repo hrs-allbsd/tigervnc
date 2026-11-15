@@ -134,6 +134,15 @@ with tempfile.TemporaryDirectory() as d, open(os.devnull,'wb') as null:
             # Motion in the middle must not change the viewport.
             subprocess.run(['xdotool','mousemove','--window',window[0],'160','123'],env=env,check=True)
             time.sleep(.15);pixels('follow dead zone')
+            edge=(ox+10,oy+123)
+            subprocess.run(['xdotool','mousemove','--window',window[0],'10','123'],env=env,check=True)
+            wait(lambda:any(struct.unpack('!BHH',e)[1:]==edge for e in server.pointer_events),'follow edge motion input')
+            ox=max(0,min(vw-tw,edge[0]-tw//2))
+            pixels('pointer motion triggers edge follow')
+            subprocess.run(['xdotool','mousemove','--window',window[0],'160','123','click','1'],env=env,check=True)
+            clicked=(ox+160,oy+123)
+            wait(lambda:any(struct.unpack('!BHH',e)==(1,*clicked) for e in server.pointer_events),'click after following')
+            checks.append('click after following')
         # A remote cursor uses the same crop/scale as the background.
         cursor_position=((ox+min(tw,vw)//2)*rw//vw,(oy+min(th,vh)//2)*rh//vh)
         advertised_pointer=cursor_position
@@ -150,6 +159,10 @@ with tempfile.TemporaryDirectory() as d, open(os.devnull,'wb') as null:
         command('0');vw,vh=rw,rh
         center(*advertised_pointer)
         pixels('100 percent after cursor')
+        os.kill(int(pid.read_text()),signal.SIGTSTP)
+        wait(lambda:'T' in subprocess.check_output(['ps','-o','state=','-p',pid.read_text().strip()],text=True),'suspend')
+        os.kill(int(pid.read_text()),signal.SIGCONT)
+        pixels('cropped viewport survives suspend and resume')
         # A remote framebuffer resize must clamp the current cropped view.
         cx,cy=(ox+min(tw,vw)//2)*rw//vw,(oy+min(th,vh)//2)*rh//vh
         original,oldrw=source,rw

@@ -1123,3 +1123,53 @@ installed manual.  No system installation or push is performed.
 The initial GPG attempt could not open /dev/ctty for a passphrase.  After
 the user restored signing, the change commit was amended with a GPG
 signature.  Author remains Hiroki Sato <hrs@allbsd.org>.
+
+2026-11-15: Add local zoom and bounded viewport panning
+-----------------------------------------------------
+Ctrl+] then +/= or - selects fixed 25/50/75/100/150/200/300/400 percent
+steps; f fits without upscaling, and 0 selects 100 percent geometry.
+Fit remains the startup mode.  Zoom centers on the last remote pointer,
+clipped at desktop edges.  p toggles follow, initially enabled.  In follow
+mode, entering an outer 20 percent region recenters only that axis; the
+middle 60 percent remains still.  The physical pointer is not warped or
+captured, and no stationary-pointer continuous pan is attempted.  Arrow
+commands pan a quarter viewport and disable follow.  Each needs a prefix.
+Local navigation works in ViewOnly and cancels remote drags, modifiers
+and queued paste.  Help, --help, README and vncsixel(1) document the UI.
+The status line exposes mode/scale and follow state without wrapping.
+
+Viewport stores a scaled virtual desktop plus a clipped origin; only the
+visible RGB snapshot is allocated, with a 64M-pixel visible limit.  Fixed
+zoom and Fit share source-pixel mapping for drawing, cursor composition
+and pointer events.  Mouse input uses the displayed transform while the
+next view is pending.  Changes to mapping force a redraw even for solid
+images; remote/terminal resize clamps the view and fixed zoom preserves
+its approximate center.  Cursor clipping still limits compositing work.
+
+Source builds at nice 20 and all 54 frontend tests pass, including fit
+compatibility, pixel/stride guards, zoom anchors, clamping, follow bounds,
+large virtual desktops and cursor sampling against a full-scan oracle.
+The existing 12-configuration JPEG/fragmented matrix passes 600 actual
+xterm pixel comparisons.  Interactive fixed and staged interactive photo
+zoom fixtures each pass 21 checks: crop clicks, keyboard-only local
+navigation, pan/follow/dead-zone motion, post-follow clicks, magnified
+cursors, background restoration, suspend/resume and framebuffer resize.
+Staged ViewOnly passes 15 checks and emits no remote input.  A separate
+ViewOnly+PhotoPalette fixture passes 14 checks before the suspend extension.
+Fixed palette pixels match the independent spatial model exactly; photo
+fixtures allow eight channel levels for libsixel/terminal quantization.
+Local help isolation, restore, resize/paging, suspend and quit also pass.
+
+Port version is 0.2.1 without PORTREVISION, as requested.  It uses the
+published 0.2.0 source commit fd9239b7 plus local feature backports.
+The feature port was clean-built at nice 20; after the version change,
+makesum, restage, check-plist, stage-qa and package pass for 0.2.1.
+The package retains the installed manual and 8192x8192 xterm startup hint.
+No real-server input or screen captures are used.  No push or system
+installation is performed for this feature.
+
+Records: zoom-foundation-build.log, zoom-controls-build.log,
+zoom-final-unit.log, zoom-protocol/, zoom-interactive.json/.log,
+zoom-viewonly-photo.json/.log, zoom-port-photo.json/.log,
+zoom-port-viewonly.json/.log, zoom-help.json/.log, zoom-man-lint.log;
+port records zoom-build.log and zoom-0.2.1-package.log.
