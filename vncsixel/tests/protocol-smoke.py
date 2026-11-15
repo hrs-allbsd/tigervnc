@@ -4,6 +4,7 @@ import argparse
 import importlib.util
 import json
 import os
+import random
 from pathlib import Path
 import select
 import signal
@@ -32,6 +33,7 @@ width, height = 599, 431
 pixels = bytearray(b'\xff\xff\xff' * width * height)
 for y in range(12): pixels[y * width * 3:(y * width + 12) * 3] = b'\0\0\xff' * 12
 compressor = zlib.compressobj()
+tight_streams = [zlib.compressobj() for _ in range(4)]
 cursor, cursor_size, hotspot, position = b'', (0, 0), (0, 0), (0, 0)
 
 def wait_for(check, label):
@@ -81,6 +83,38 @@ def packed(indices, w, h, bits):
 def run_length(length):
     full, remainder = divmod(length - 1, 255)
     return b'\xff' * full + bytes([remainder])
+
+def compact(length):
+    assert 0 <= length <= 0x3fffff
+    result = bytearray([length & 127])
+    if length > 127:
+        result[0] |= 128
+        result.append((length >> 7) & 127)
+        if length > 16383:
+            result[1] |= 128
+            result.append(length >> 14)
+    return bytes(result)
+
+def tight(x, y, w, h, data, stream=0, filter_data=b'', reset=0):
+    for i in range(4):
+        if reset & (1 << i): tight_streams[i] = zlib.compressobj()
+    control = (stream << 4) | (64 if filter_data else 0) | reset
+    if len(data) >= 12:
+        compressed = tight_streams[stream].compress(data) + tight_streams[stream].flush(zlib.Z_SYNC_FLUSH)
+        data = compact(len(compressed)) + compressed
+    return (x,y,w,h,7,bytes([control])+filter_data+data)
+
+def gradient(rgb, w, h):
+    result = bytearray()
+    for y in range(h):
+        for x in range(w):
+            for c in range(3):
+                left = rgb[(y*w+x-1)*3+c] if x else 0
+                above = rgb[((y-1)*w+x)*3+c] if y else 0
+                diagonal = rgb[((y-1)*w+x-1)*3+c] if x and y else 0
+                estimate = min(255, max(0, left+above-diagonal))
+                result.append((rgb[(y*w+x)*3+c]-estimate) & 255)
+    return bytes(result)
 
 with tempfile.TemporaryDirectory() as directory, open(os.devnull, 'wb') as null:
     try:
@@ -149,7 +183,7 @@ with tempfile.TemporaryDirectory() as directory, open(os.devnull, 'wb') as null:
             wait_for(lambda: server.sent > before, 'update not sent: ' + label)
             verify(label)
         verify('initial raw image')
-        assert {0, 1, -223, -308, -239, -240, -314, 0x574d5666} <= server.encodings
+        assert {0, 1, 7, -223, -308, -239, -240, -314, 0x574d5666} <= server.encodings
         assert (server.client_format or server.server_format) == (32, 24, 0, 1, 255, 255, 255, 16, 8, 0)
         update('raw primary colors', [raw(24, 48, 100, 80, b'\xff\0\0'),
                                      raw(124, 48, 100, 80, b'\0\xff\0')])
@@ -215,6 +249,57 @@ with tempfile.TemporaryDirectory() as directory, open(os.devnull, 'wb') as null:
         saved = b''.join(pixels[((120+y)*width+480)*3:((120+y)*width+512)*3] for y in range(32))
         paint(480,220,32,32,saved)
         update('CopyRect from decoded ZRLE pixels', [(480,220,32,32,1,struct.pack('!HH',480,120))])
+        # Tight TPIXEL is RGB, unlike Raw/ZRLE's negotiated BGR byte order.
+        fill(30,260,17,13,yellow)
+        update('Tight fill RGB order', [(30,260,17,13,7,b'\x80'+yellow)])
+        rgb = red+green+blue
+        paint(60,260,3,1,rgb)
+        update('Tight copy below compression threshold', [tight(60,260,3,1,rgb)])
+        rgb += white
+        paint(60,262,4,1,rgb)
+        update('Tight copy at compression threshold', [tight(60,262,4,1,rgb)])
+        for round_number in range(2):
+            rectangles = []
+            for stream in range(4):
+                rgb = b''.join(colors[(x+y+stream+round_number)%8] for y in range(9) for x in range(17))
+                x = 80+stream*24
+                paint(x,260,17,9,rgb)
+                rectangles.append(tight(x,260,17,9,rgb,stream=stream))
+            update('Tight four streams '+('initialize' if round_number==0 else 'reuse'), rectangles)
+        rgb = blue*17*9
+        paint(128,260,17,9,rgb)
+        update('Tight reset one stream', [tight(128,260,17,9,rgb,stream=2,reset=4)])
+        # Fill can reset streams without consuming their compressed history.
+        fill(30,280,17,13,green)
+        for i in range(4): tight_streams[i] = zlib.compressobj()
+        rectangles = [(30,280,17,13,7,b'\x8f'+green)]
+        for stream in range(4):
+            rgb = colors[stream]*17*9
+            paint(80+stream*24,280,17,9,rgb)
+            rectangles.append(tight(80+stream*24,280,17,9,rgb,stream=stream))
+        update('Tight fill resets all streams', rectangles)
+        for h in (3,9):
+            indices = [(x+y)%2 for y in range(h) for x in range(13)]
+            rgb = b''.join(colors[i] for i in indices)
+            paint(200,260,13,h,rgb)
+            data = packed(indices,13,h,1)
+            update('Tight two-color palette '+('uncompressed' if h==3 else 'compressed'),
+                [tight(200,260,13,h,data,filter_data=b'\x01\x01'+red+green)])
+        indices = [(x+3*y)%4 for y in range(9) for x in range(17)]
+        rgb = b''.join(colors[i] for i in indices)
+        paint(230,260,17,9,rgb)
+        update('Tight indexed palette', [tight(230,260,17,9,bytes(indices),
+            stream=1,filter_data=b'\x01\x03'+b''.join(colors[:4]))])
+        rgb = b''.join(colors[(x+3*y)%8] for y in range(13) for x in range(19))
+        paint(260,260,19,13,rgb)
+        update('Tight gradient reconstruction', [tight(260,260,19,13,gradient(rgb,19,13),
+            stream=3,filter_data=b'\x02')])
+        rng = random.Random(6143)
+        rgb = b''.join(colors[rng.randrange(8)] for _ in range(320*160))
+        paint(30,240,320,160,rgb)
+        rectangle = tight(30,240,320,160,rgb,filter_data=b'\x00')
+        assert rectangle[-1][2] & 128 and rectangle[-1][3] & 128, 'need three-byte Tight length'
+        update('Tight explicit copy three-byte length', [rectangle])
         # Shape, hotspot, mask, position, clipping and shape removal.
         position, hotspot, cursor_size = (180,180), (3,2), (9,7)
         cursor = b''.join(b'\xff\0\xff\xff' if x < 5 else b'\0\0\0\0' for y in range(7) for x in range(9))

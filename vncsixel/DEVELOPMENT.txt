@@ -450,3 +450,15 @@ production code are unchanged, so no new package revision is required.
 Only generated fixture data and numeric results are recorded.  No live
 server input, credentials or screenshots were used.  This is encoding
 correctness coverage, not a WAN benchmark or a 16-bit decoder matrix.
+
+2026-11-15: Lossless Tight encoding coverage
+-------------------------------------------
+The independent protocol fixture now covers Tight RGB Fill, uncompressed
+Copy below 12 bytes, compressed Copy at the threshold, all four zlib
+streams and their reuse, individual reset and all-stream reset by Fill.
+Palette filters cover bit-packed rows below/above the compression
+threshold and indexed data.  Gradient reconstructs clipped predictions;
+a large explicit Copy filter exercises three-byte compact lengths.
+All 40 displayed states match the xterm RGB model in the default mode.
+The fixture generates packets without TigerVNC encoders, following the
+rfbproto Tight specification and common/rfb/TightConstants.h.
