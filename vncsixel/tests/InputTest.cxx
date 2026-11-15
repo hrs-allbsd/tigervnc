@@ -36,8 +36,11 @@ TEST_F(Parser, ModifiedKeys)
 }
 TEST_F(Parser, PasteCannotInvokeLocalPrefix)
 {
-	feed("\033[200~a\x1d\033[201~b"); ASSERT_EQ(events.size(), 2u);
-	EXPECT_EQ(events[0].key, 'a'); EXPECT_EQ(events[1].key, 'b');
+	feed("\033[200~a\x1d\033[201~b"); ASSERT_EQ(events.size(), 4u);
+	EXPECT_EQ(events[0].kind, InputEvent::PasteBegin);
+	EXPECT_EQ(events[1].key, 'a'); EXPECT_TRUE(events[1].pasted);
+	EXPECT_EQ(events[2].kind, InputEvent::PasteEnd);
+	EXPECT_EQ(events[3].key, 'b'); EXPECT_FALSE(events[3].pasted);
 }
 TEST_F(Parser, DeviceRepliesAreNotKeys)
 {
@@ -65,4 +68,17 @@ TEST_F(Parser, CSIuModifiedCharacter)
 {
 	feed("\033[97;3u"); ASSERT_EQ(events.size(), 1u);
 	EXPECT_EQ(events[0].key, 'a'); EXPECT_EQ(events[0].modifiers, 2u);
+}
+
+TEST_F(Parser, FragmentedPasteBoundariesAndUnicode)
+{
+	feed("\033[20"); EXPECT_TRUE(events.empty());
+	feed("0~\xe3\x81"); ASSERT_EQ(events.size(), 1u);
+	EXPECT_EQ(events[0].kind, InputEvent::PasteBegin);
+	feed("\x82\n\033[20"); ASSERT_EQ(events.size(), 3u);
+	EXPECT_EQ(events[1].key, 0x01003042u); EXPECT_TRUE(events[1].pasted);
+	EXPECT_EQ(events[2].key, XK_Return); EXPECT_TRUE(events[2].pasted);
+	feed("1~x"); ASSERT_EQ(events.size(), 5u);
+	EXPECT_EQ(events[3].kind, InputEvent::PasteEnd);
+	EXPECT_EQ(events[4].key, 'x'); EXPECT_FALSE(events[4].pasted);
 }

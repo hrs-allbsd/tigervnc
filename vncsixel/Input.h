@@ -6,11 +6,11 @@
 #include <string>
 namespace sixelvnc {
 struct InputEvent {
-	enum Kind { Key, Mouse, FocusOut, Refresh } kind = Key;
+	enum Kind { Key, Mouse, FocusOut, Refresh, PasteBegin, PasteEnd } kind = Key;
 	uint32_t key = 0;
 	unsigned modifiers = 0;
 	int x = 0, y = 0, button = 0;
-	bool release = false;
+	bool release = false, pasted = false;
 };
 class Input {
 public:

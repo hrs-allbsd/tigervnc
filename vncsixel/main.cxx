@@ -40,6 +40,7 @@ int main(int argc, char** argv)
 		    "-HideLocalCursor=0: retain the local X11 pointer.\n"
 		    "-MaxFPS 1..60: redraw rate limit (default 10).\n"
 		    "-EscapeTimeout 1..1000: Escape sequence wait in ms (default 50).\n"
+		    "-PasteRate 1..10000: pasted characters/s (default 200).\n"
 		    "-PerfLog file: numeric performance summary in JSON.\n"
 		    "Run in xterm -ti vt340 with allowSendEvents:false.\n"
 		    "Ctrl+] then q quits; c/a/s latch modifiers; u releases input.\n"
@@ -122,6 +123,7 @@ int main(int argc, char** argv)
 			}
 			auto now = std::chrono::steady_clock::now();
 			if (now - lastInput > std::chrono::milliseconds(escapeTimeout)) input.expire();
+			connection.drainInput();
 			if (entered && frames.due(now) && connection.render())
 				frames.rendered(now);
 			hostCursor.update(entered && connection.hideLocalCursor(),
@@ -130,7 +132,8 @@ int main(int argc, char** argv)
 			terminal.flush();
 			pollfd fds[] = {{connection.fd(), POLLIN, 0},
 			    {terminal.fd(), static_cast<short>(POLLIN | (terminal.pending() ? POLLOUT : 0)), 0}};
-			if (poll(fds, 2, frames.pollTimeout(std::chrono::steady_clock::now())) < 0 && errno != EINTR)
+			if (poll(fds, 2, std::min(connection.inputTimeout(),
+			    frames.pollTimeout(std::chrono::steady_clock::now()))) < 0 && errno != EINTR)
 				throw std::runtime_error("poll failed");
 			if (fds[1].revents & POLLIN) {
 				char bytes[1024];

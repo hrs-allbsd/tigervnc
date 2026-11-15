@@ -3,6 +3,7 @@
 #define VNCSIXEL_CONNECTION_H
 #include "Terminal.h"
 #include "Input.h"
+#include "KeyQueue.h"
 #include "Performance.h"
 #include <rfb/CConnection.h>
 #include <network/TcpSocket.h>
@@ -20,6 +21,8 @@ public:
 	bool render();
 	bool input(const InputEvent&);
 	void releaseInput();
+	void drainInput();
+	int inputTimeout() const;
 	void redraw() { dirty = forceFull = true; }
 	int displayWidth = 0, displayHeight = 0;
 	bool ready = false;
@@ -36,6 +39,9 @@ private:
 	void getUserPasswd(std::string*, std::string*) override;
 	bool verifyCertificate(unsigned, const uint8_t*, size_t) override;
 	bool verifyHostKey(const uint8_t*, size_t, const char*) override;
+	KeyQueue keys;
+	bool discardPaste = false, receivingPaste = false;
+	std::string inputNotice;
 	Performance performance;
 	std::unique_ptr<network::TcpSocket> socket;
 	Terminal& terminal;

@@ -24,6 +24,8 @@
 using namespace sixelvnc;
 
 namespace {
+core::IntParameter pasteRate("PasteRate",
+    "Maximum pasted characters per second", 200, 1, 10000);
 core::StringParameter passwordFile("PasswordFile",
     "Password file for VNC authentication", "");
 core::AliasParameter passwd("passwd", &passwordFile);
@@ -33,7 +35,8 @@ core::BoolParameter sharedSession("Shared", "Request a shared VNC session", true
 core::BoolParameter viewOnly("ViewOnly", "Do not send remote input", false);
 }
 
-Connection::Connection(const char* name, Terminal& term) : terminal(term)
+Connection::Connection(const char* name, Terminal& term) :
+    keys(pasteRate), terminal(term)
 {
 	std::string host;
 	int port;
@@ -325,8 +328,25 @@ void Connection::modifiers(unsigned wanted)
 	}
 	held = wanted;
 }
+int Connection::inputTimeout() const
+{
+	return keys.timeout(KeyQueue::Clock::now());
+}
+void Connection::drainInput()
+{
+	InputEvent e;
+	for (int i = 0; i < 64 && keys.take(KeyQueue::Clock::now(), e); i++) {
+		modifiers(e.modifiers);
+		sendKeyPress(e.key, 0, e.key);
+		sendKeyRelease(e.key);
+		modifiers(latched | mouseMods);
+	}
+}
 void Connection::releaseInput()
 {
+	if (keys.size() || receivingPaste) inputNotice = "Pending input cancelled";
+	keys.clear();
+	if (receivingPaste) discardPaste = true;
 	if (!ready || viewOnly) return;
 	sendPointerEvent(pointer, 0);
 	releaseAllKeys();
@@ -339,11 +359,25 @@ void Connection::status()
 	terminal.queue("\033[" + std::to_string(terminal.height / terminal.cellHeight + 2) +
 	    ";1H\033[2KCtrl+] q quit, r redraw, c/a/s latch, u release  [" +
 	    ((latched & 4) ? "Ctrl " : "") + ((latched & 2) ? "Alt " : "") +
-	    ((latched & 1) ? "Shift" : "") + "]");
+	    ((latched & 1) ? "Shift" : "") + "] " + inputNotice);
 }
 bool Connection::input(const InputEvent& e)
 {
 	if (!ready) return true;
+	if (e.kind == InputEvent::PasteBegin) {
+		receivingPaste = true;
+		discardPaste = false;
+		prefix = false;
+		return true;
+	}
+	if (e.kind == InputEvent::PasteEnd) {
+		receivingPaste = discardPaste = false;
+		return true;
+	}
+	if (e.pasted) {
+		prefix = false;
+		if (discardPaste || viewOnly) return true;
+	}
 	if (viewOnly) {
 		if (e.kind == InputEvent::Key && prefix) {
 			prefix = false;
@@ -356,11 +390,11 @@ bool Connection::input(const InputEvent& e)
 	if (e.kind == InputEvent::FocusOut) { releaseInput(); status(); return true; }
 	if (e.kind == InputEvent::Refresh) { redraw(); return true; }
 	if (e.kind == InputEvent::Key) {
-		if (prefix) {
+		if (!e.pasted && prefix) {
 			prefix = false;
 			if (e.key == 'q') return false;
 			if (e.key == 'r') { redraw(); return true; }
-			if (e.key == 'u') releaseInput();
+			if (e.key == 'u') { releaseInput(); inputNotice = "Pending paste cancelled"; }
 			else if (e.key == 'c') latched ^= 4;
 			else if (e.key == 'a') latched ^= 2;
 			else if (e.key == 's') latched ^= 1;
@@ -370,11 +404,16 @@ bool Connection::input(const InputEvent& e)
 			}
 			modifiers(latched | mouseMods); status(); return true;
 		}
-		if (e.key == ']' && (e.modifiers & 4)) { prefix = true; return true; }
-		modifiers(latched | mouseMods | e.modifiers);
-		sendKeyPress(e.key, 0, e.key);
-		sendKeyRelease(e.key);
-		modifiers(latched | mouseMods);
+		if (!e.pasted && e.key == ']' && (e.modifiers & 4)) { prefix = true; return true; }
+		InputEvent queued = e;
+		if (!e.pasted) queued.modifiers |= latched | mouseMods;
+		if (!keys.push(queued)) {
+			keys.clear();
+			discardPaste = e.pasted;
+			inputNotice = "Input cancelled: 8192-key queue limit";
+			status();
+		} else if (!e.pasted && keys.size() == 1)
+			drainInput();
 		return true;
 	}
 	if (e.button & 128) return true; /* Extra buttons are not mapped yet. */

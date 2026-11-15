@@ -11,6 +11,7 @@ void Input::character(uint32_t cp, unsigned mods, bool literal)
 {
 	InputEvent e;
 	e.modifiers = mods;
+	e.pasted = literal;
 	if (cp == 0x7f) e.key = XK_BackSpace;
 	else if (cp == 13 || cp == 10) e.key = XK_Return;
 	else if (cp == 9) e.key = XK_Tab;
@@ -44,7 +45,14 @@ bool Input::parse()
 	if (paste && buffer[0] == 27) {
 		const std::string end = "\033[201~";
 		if (end.compare(0, buffer.size(), buffer) == 0) {
-			if (buffer == end) { paste = false; buffer.clear(); return true; }
+			if (buffer == end) {
+				paste = false;
+				buffer.clear();
+				InputEvent e;
+				e.kind = InputEvent::PasteEnd;
+				callback(e);
+				return true;
+			}
 			return false;
 		}
 		buffer.erase(0, 1); /* Literal pasted ESC is never a command. */
@@ -88,7 +96,12 @@ bool Input::parse()
 				else return true;
 			}
 			values.push_back(value);
-			if (final == '~' && values[0] == 200) { paste = true; return true; }
+			if (final == '~' && values[0] == 200) {
+				paste = true;
+				e.kind = InputEvent::PasteBegin;
+				callback(e);
+				return true;
+			}
 			if (final == 'u' && values.size() == 2 && values[1] >= 1 && values[1] <= 8) {
 				uint32_t cp = values[0];
 				if (cp <= 0x10ffff && !(cp >= 0xd800 && cp <= 0xdfff))
