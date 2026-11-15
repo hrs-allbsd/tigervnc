@@ -412,3 +412,21 @@ check-plist, stage-qa and package.  Staged validation covers all 42
 security cases, authentication, terminal negotiation and 19 RFB pixel
 comparisons.  The package binary and installed documents are compared
 with the validated stage and source files before copying to packages/All.
+
+2026-11-15: Hextile and ZRLE encoding coverage
+--------------------------------------------
+protocol-smoke.py now compares 28 displayed states with an independent
+RGB model in a private xterm/Xvfb.  New cases cover inherited Hextile
+background/foreground, colored subrectangles, partial edge tiles and
+background reuse after a Raw tile.  ZRLE adds raw edge tiles, 1/2/4-bit
+packed palettes with row padding, plain/palette RLE continuation lengths,
+multiple rectangles sharing one zlib stream and CopyRect of decoded data.
+The fixture generates wire bytes without TigerVNC's encoders, following
+RFC 6143 sections 7.7.4-7.7.6.  ZRLE now uses one persistent compressor
+with sync flushes, rather than a finished single-rectangle stream.
+
+All 28 cases pass in the default RGB888/256-color configuration, including
+cursor and resize regressions.  No production drawing change was needed.
+The server-format option changes only ServerInit: vncsixel negotiates
+RGB888 update pixels.  These are not 16-bit or big-endian decoder tests;
+the report now explicitly records the negotiated pixel format.
