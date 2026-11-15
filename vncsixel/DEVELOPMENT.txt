@@ -942,3 +942,37 @@ screenshots are used.  Runtime and port revision 18 remain unchanged;
 compilation and packaging are not repeated for this test-only change.
 Next work includes a broader public image corpus, paced motion throughput
 and temporal palette behavior, plus multi-hour live memory stability.
+
+2026-11-15: Separate palette variation from photographic motion
+-------------------------------------------------------------
+The photo fixture now undoes each cyclic shift on the captured display
+pixels before comparing consecutive frames.  It retains only RMSE,
+maximum channel delta and changed-pixel count.  Fixed-palette aligned
+output must be identical.  --return-image sends the original photograph
+again and requires exact agreement with its initial presentation.
+
+Earthrise with twelve shifts and a return passes all four configurations,
+15 updates and frames each (60 frames total).  Fixed 256-color and both
+8-color configurations have zero aligned differences on all twelve
+transitions.  PhotoPalette aligned differences range from zero to RMSE
+3.766826, up to 206823 of 258169 pixels changed and maximum channel delta
+61.  Quantization can therefore change for the same source pixel as the
+image moves.  All four returned images exactly match their initial image,
+with zero changed pixels; this trial finds no persistent palette history
+or stale output on return.  It does not prove that such faults cannot occur
+with other inputs, nor does it measure perceived flicker.
+
+Totals including blue/original/pans/return are 566184 encoded bytes fixed
+and 1504188 adaptive.  No runtime tuning is justified from this one photo.
+The default gradient palette/resize regressions pass again; three invalid
+return configurations are rejected before starting a viewer.  Records:
+earthrise-temporal.json/.log and temporal-gradient-regression.json/.log.
+No live-server inputs, credentials or screenshots are retained.
+
+Constant-rate motion throughput remains separate work: the screenshot and
+stability waits in this quality fixture must not set its producer cadence.
+A paced producer needs independent observation of terminal catch-up and
+frame coalescing before throughput claims are meaningful.  Runtime and
+port revision 18 remain unchanged; no build/package/install/push is done
+for this test-only change.  Broader image coverage and multi-hour real
+server memory stability remain open.
