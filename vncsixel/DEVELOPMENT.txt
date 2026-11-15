@@ -109,7 +109,8 @@ Verification
 Remaining work, in order
 ------------------------
 1. Remote application/WAN input latency and long-duration tests;
-   semitransparent cursors and broader server interoperability.  Tight/JPEG,
+   broader server interoperability and representative cursor workloads.
+   Semitransparent cursors, Tight/JPEG,
    Hextile/ZRLE, CopyRect and resize have a 12-configuration pixel matrix.
 2. Representative photograph/video workloads and further tuning of the
    sparse-region compression estimate; PhotoPalette is now available.
@@ -495,3 +496,29 @@ and a visible cursor across server shrink/grow.  The expectation model
 blends straight RGBA, then applies fixed-palette/SIXEL color conversion.
 Wire packets use premultiplied RGBA as required by rfbproto's Cursor With
 Alpha extension.  All 50 states including JPEG pass before optimization.
+
+2026-11-15: Bounded cursor composition
+-------------------------------------
+RGB snapshot extraction no longer checks cursor overlap at every display
+pixel.  compositeCursor() clips the source cursor rectangle and derives
+ceil(source * display / remote) bounds, then blends only those samples.
+The blend formula, nearest-neighbor mapping and palette order are kept.
+PerfLog cursor_samples records the actual covered display samples.
+
+43 frontend tests pass.  New differential tests compare full-image
+sampling with the bounded implementation at native, fractional-downscale
+and upscale ratios, clipped/offscreen/extreme positions and hotspots.
+They include transparent data, sampling gaps, buffer guards and sample
+counts.  A 15x11 cursor on an 846x774 image needs 165 cursor checks rather
+than 654804.  This structural reduction is not an end-to-end speed claim.
+
+All 12 protocol configurations pass 50 displayed states including JPEG
+(600 pixel comparisons).  Passive shared/ViewOnly real-server samples
+also complete at 5120x4680 remote and 846x774 displayed resolution.
+Before: 56 frames + 42 skipped; CPU 1.500078 s, snapshot 670.961101 ms.
+After: 50 frames + 52 skipped; CPU 0.747993 s, snapshot 320.960049 ms,
+cursor_samples 0.  The sampled cursor covered no display samples.
+Updates and concurrent local validation differed; these observations do
+not establish a controlled speedup.  No remote input, screen capture,
+host identity or credential was recorded.  Port revision 14 backports
+the bounded compositor and numeric counter.

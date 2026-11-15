@@ -285,7 +285,7 @@ TCP may coalesce writes; packet or recv() boundaries are not assumed.
 Reports include the negotiated format and update write count.
 
 Run all 12 combinations (three ServerInit formats, 8/256 colors,
-normal/fragmented updates), each with 40 lossless pixel comparisons:
+normal/fragmented updates), each with 49 lossless pixel comparisons:
 
   python3 vncsixel/tests/protocol-matrix.py /path/to/vncsixel \
       --report-dir /private/protocol-matrix --jobs 2
@@ -498,7 +498,7 @@ Example: vncsixel -QualityLevel=8 -CompressLevel=2 host:display
 Tight lossless tests include Copy, Fill, Palette and Gradient filters,
 four persistent zlib streams, resets, row padding, the 12-byte threshold
 and compact lengths.  Add --jpeg to protocol-smoke.py or protocol-matrix.py
-to enable QualityLevel=8 and a 41st displayed state: Tight JPEG blocks.
+to enable QualityLevel=8 and a 50th displayed state: Tight JPEG blocks.
 This optional fixture requires cjpeg/djpeg (libjpeg-turbo tools).  It
 checks JPEG transport, RGB ordering and terminal placement with primary
 color blocks.  It is not a photograph/video quality measurement or an
@@ -508,3 +508,19 @@ independent JPEG codec test; both codec paths use libjpeg.
       --report /private/encoding-options.json
   python3 vncsixel/tests/protocol-matrix.py /path/to/vncsixel --jpeg \
       --report-dir /private/tight-matrix --jobs 2
+
+Semitransparent cursor composition
+----------------------------------
+Cursor With Alpha uses premultiplied RGBA on the wire; TigerVNC supplies
+straight RGBA to the renderer.  The viewer blends this with the sampled
+remote background, then quantizes the result for terminal colors.
+The compositor now visits only display samples covered by the cursor.
+Ceiling bounds preserve nearest-neighbor sampling at fractional scales,
+including clipped edges and cursor shapes too small to hit any sample.
+
+PerfLog cursor_samples counts cursor-covered samples considered across
+all snapshots, including snapshots whose unchanged image is skipped.
+Transparent pixels are counted but do not change the background.
+It is not an encoded pixel count or a measure of server input latency.
+The protocol fixture includes alpha endpoints/intermediate values,
+background changes, movement, clipping, replacement and cursor resize.

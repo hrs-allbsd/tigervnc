@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 #include "Connection.h"
 #include "Framebuffer.h"
+#include "Cursor.h"
 #include "Palette.h"
 #include "Damage.h"
 #include "Help.h"
@@ -300,17 +301,13 @@ bool Connection::render()
 			int sx = int(static_cast<int64_t>(x) * rw / displayWidth);
 			fb->getPF().rgbFromBuffer(&rgb[(static_cast<size_t>(y) * displayWidth + x) * 3],
 			    pixels + (static_cast<size_t>(sy) * stride + sx) * 4, 1);
-			const auto& cursor = server.cursor();
-			int cx = sx - pointer.x + cursor.hotspot().x;
-			int cy = sy - pointer.y + cursor.hotspot().y;
-			if (cx >= 0 && cy >= 0 && cx < cursor.width() && cy < cursor.height()) {
-				const uint8_t* fg = cursor.getBuffer() + (static_cast<size_t>(cy) * cursor.width() + cx) * 4;
-				uint8_t* bg = &rgb[(static_cast<size_t>(y) * displayWidth + x) * 3];
-				for (int c = 0; c < 3; c++)
-					bg[c] = (unsigned(bg[c]) * (255 - fg[3]) + unsigned(fg[c]) * fg[3]) / 255;
-			}
 		}
 	}
+	const auto& cursor = server.cursor();
+	performance.cursorSamples += compositeCursor(rgb.data(), displayWidth,
+	    displayHeight, rw, rh, cursor.getBuffer(), cursor.width(),
+	    cursor.height(), cursor.hotspot().x, cursor.hotspot().y,
+	    pointer.x, pointer.y);
 	bool photo = photoPalette && terminal.paletteColors == 256;
 	std::vector<uint8_t> indexed;
 	std::vector<DamageRect> regions;
