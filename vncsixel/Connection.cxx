@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 #include "Connection.h"
 #include "Framebuffer.h"
+#include "Palette.h"
 #include <rfb/PixelBuffer.h>
 #include <rfb/obfuscate.h>
 #include <core/Configuration.h>
@@ -198,6 +199,9 @@ void Connection::render()
 			}
 		}
 	}
+	std::vector<uint8_t> indexed(static_cast<size_t>(displayWidth) * displayHeight);
+	for (size_t i = 0; i < indexed.size(); i++)
+		indexed[i] = rgb332(rgb[i * 3], rgb[i * 3 + 1], rgb[i * 3 + 2]);
 	performance.remoteWidth = rw;
 	performance.remoteHeight = rh;
 	performance.width = displayWidth;
@@ -221,10 +225,10 @@ void Connection::render()
 		palette[i * 3 + 2] = (i & 3) * 255 / 3;
 	}
 	sixel_dither_set_palette(dither, palette);
-	sixel_dither_set_pixelformat(dither, SIXEL_PIXELFORMAT_RGB888);
+	sixel_dither_set_pixelformat(dither, SIXEL_PIXELFORMAT_PAL8);
 	sixel_dither_set_diffusion_type(dither, SIXEL_DIFFUSE_NONE);
 	sixel_dither_set_body_only(dither, 0);
-	SIXELSTATUS result = sixel_encode(rgb.data(), displayWidth, displayHeight, 3, dither, output);
+	SIXELSTATUS result = sixel_encode(indexed.data(), displayWidth, displayHeight, 1, dither, output);
 	sixel_dither_unref(dither);
 	sixel_output_unref(output);
 	if (SIXEL_FAILED(result) || encoded.failed)

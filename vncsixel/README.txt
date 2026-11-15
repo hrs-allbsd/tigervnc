@@ -139,3 +139,7 @@ For a passive real-server sample in a private Xvfb/xterm:
 The credential file contains vnc user:, vnc pass:, and vnc host: lines.
 Do not add it to Git.  The harness saves statistics without screenshots.
 An idle server sample does not measure interactive workload performance.
+
+The fixed RGB332 palette is quantized once per displayed pixel and passed
+to libsixel as PAL8, avoiding repeated RGB-to-palette searches inside the
+encoder.  This preserves the fixed palette and disables diffusion.
