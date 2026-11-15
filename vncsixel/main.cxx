@@ -8,6 +8,7 @@
 #include <csignal>
 #include <cstdio>
 #include <cstring>
+#include <strings.h>
 #include <exception>
 #include <poll.h>
 #include <unistd.h>
@@ -26,6 +27,16 @@ void signalHandler(int number)
 	else
 		stopped = 1;
 }
+// Track explicit nonempty values, including values equal to the default.
+bool explicitFile(const char* argument, const char* name, bool previous)
+{
+	while (*argument == '-')
+		argument++;
+	size_t length = strcspn(argument, "=");
+	if (length != strlen(name) || strncasecmp(argument, name, length) != 0)
+		return previous;
+	return !core::Configuration::getParam(name)->getValueStr().empty();
+}
 }
 int main(int argc, char** argv)
 {
@@ -34,6 +45,7 @@ int main(int argc, char** argv)
 		    "-PasswordFile file (alias -passwd): vncpasswd-format file.\n"
 		    "VNC_USERNAME and VNC_PASSWORD: same environment as vncviewer.\n"
 		    "-KnownHosts file: RSA-AES keys; -StrictHostKeyChecking: reject unknown.\n"
+		    "-X509CA file, -X509CRL file: require readable, nonempty PEM files.\n"
 		    "-ViewOnly: suppress remote input; -Shared=0: exclusive session.\n"
 		    "-CellSize WxH, -PixelSize WxH: override terminal geometry.\n"
 		    "-SingleRect: use one bounding rectangle instead of sparse regions.\n"
@@ -50,9 +62,12 @@ int main(int argc, char** argv)
 		return 0;
 	}
 	const char* host = nullptr;
+	bool requireCA = false, requireCRL = false;
 	for (int i = 1; i < argc;) {
 		int used = core::Configuration::handleParamArg(argc, argv, i);
 		if (used > 0) {
+			requireCA = explicitFile(argv[i], "X509CA", requireCA);
+			requireCRL = explicitFile(argv[i], "X509CRL", requireCRL);
 			i += used;
 			continue;
 		}
@@ -84,7 +99,7 @@ int main(int argc, char** argv)
 			    terminal.paletteColors);
 			return 0;
 		}
-		sixelvnc::Connection connection(host, terminal);
+		sixelvnc::Connection connection(host, terminal, requireCA, requireCRL);
 		sixelvnc::HostCursor hostCursor;
 		bool entered = false;
 		sixelvnc::Input input([&](const sixelvnc::InputEvent& e) {

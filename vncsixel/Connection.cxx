@@ -52,8 +52,8 @@ core::BoolParameter sharedSession("Shared", "Request a shared VNC session", true
 core::BoolParameter viewOnly("ViewOnly", "Do not send remote input", false);
 }
 
-Connection::Connection(const char* name, Terminal& term) :
-    keys(pasteRate), terminal(term)
+Connection::Connection(const char* name, Terminal& term, bool ca, bool crl) :
+    requireCA(ca), requireCRL(crl), keys(pasteRate), terminal(term)
 {
 	std::string host;
 	int port;
@@ -166,6 +166,13 @@ void Connection::getUserPasswd(std::string* user, std::string* password)
 		*password = value;
 		std::fill(value, value + password->size(), '\0');
 	}
+}
+void Connection::checkCertificateFiles(int caStatus, int crlStatus)
+{
+	if (requireCA && caStatus < 1)
+		throw std::runtime_error("Cannot load specified X509CA file");
+	if (requireCRL && crlStatus < 1)
+		throw std::runtime_error("Cannot load specified X509CRL file");
 }
 bool Connection::verifyCertificate(unsigned status, const uint8_t*, size_t)
 {

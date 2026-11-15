@@ -37,7 +37,7 @@ with tempfile.TemporaryDirectory() as directory, open(os.devnull,'wb') as null:
     password=root/'passwd'
     password.write_bytes(subprocess.check_output(['vncpasswd','-f'],input=b'fixture\n'))
     password.chmod(0o600)
-    def start(security,key='rsa1',port=None):
+    def start(security,key='rsa1',port=None,certificate='tls.crt'):
         if port is None:
             with socket.socket() as listener:
                 listener.bind(('127.0.0.1',0)); port=listener.getsockname()[1]
@@ -45,7 +45,7 @@ with tempfile.TemporaryDirectory() as directory, open(os.devnull,'wb') as null:
         log=(root/'server.log').open('wb')
         server=subprocess.Popen(['Xvnc','-displayfd',str(w),'-geometry','320x240','-noreset',
             '-localhost','-rfbport',str(port),'-SecurityTypes',security,'-PasswordFile',str(password),
-            '-RSAKey',str(root/key),'-X509Cert',str(root/'tls.crt'),'-X509Key',str(root/'tls.key'),
+            '-RSAKey',str(root/key),'-X509Cert',str(root/certificate),'-X509Key',str(root/'tls.key'),
             '-UseBlacklist=0'],pass_fds=(w,),stdout=log,stderr=log)
         os.close(w)
         if not select.select([r],[],[],15)[0]:
@@ -61,6 +61,7 @@ with tempfile.TemporaryDirectory() as directory, open(os.devnull,'wb') as null:
         # Isolate default trust files as well as explicit KnownHosts cases.
         env['HOME']=str(root/'home')
         env['XDG_DATA_HOME']=str(root/'xdg')
+        env['XDG_CONFIG_HOME']=str(root/'config')
         pidfile,perf=root/'viewer.pid',root/'perf.json'
         perf.unlink(missing_ok=True)
         wrapper='pidfile=$1; shift; "$@" & p=$!; echo $p > "$pidfile"; wait $p; result=$?; printf "SEC_DONE:%s\\n" "$result"; read ignored; exit "$result"'
@@ -143,6 +144,75 @@ with tempfile.TemporaryDirectory() as directory, open(os.devnull,'wb') as null:
                 run('trusted X509 accepted',security,port,['-X509CA='+str(root/'tls.crt')])
                 run('X509 name mismatch rejected',security,port,['-X509CA='+str(root/'tls.crt')],accepted=False,host='127.0.0.1')
             else:run('anonymous TLS interoperability',security,port)
+        finally:server.terminate();server.wait(timeout=10)
+    # A temporary CA issues valid, expired, future and wrong-purpose leaves.
+    subprocess.run(['openssl','req','-x509','-newkey','rsa:2048','-nodes','-keyout',str(root/'ca.key'),
+        '-out',str(root/'ca.crt'),'-subj','/CN=Fixture CA','-addext','basicConstraints=critical,CA:TRUE',
+        '-days','3650'],stdout=null,stderr=null,check=True)
+    (root/'index').write_text(''); (root/'serial').write_text('1000\n'); (root/'crlnumber').write_text('2000\n')
+    (root/'newcerts').mkdir()
+    config=root/'ca.cnf'
+    config.write_text(f"""[ca]
+default_ca = fixture
+[fixture]
+database = {root}/index
+new_certs_dir = {root}/newcerts
+certificate = {root}/ca.crt
+private_key = {root}/ca.key
+serial = {root}/serial
+crlnumber = {root}/crlnumber
+default_md = sha256
+default_days = 1
+default_crl_days = 1
+unique_subject = no
+policy = names
+[names]
+commonName = supplied
+[server]
+basicConstraints = critical,CA:FALSE
+keyUsage = critical,digitalSignature,keyEncipherment
+extendedKeyUsage = serverAuth
+subjectAltName = DNS:localhost
+[client]
+basicConstraints = critical,CA:FALSE
+keyUsage = critical,digitalSignature,keyEncipherment
+extendedKeyUsage = clientAuth
+subjectAltName = DNS:localhost
+""")
+    subprocess.run(['openssl','req','-new','-key',str(root/'tls.key'),'-out',str(root/'leaf.csr'),
+        '-subj','/CN=localhost'],stdout=null,stderr=null,check=True)
+    ca=['openssl','ca','-batch','-config',str(config)]
+    for name,extension,dates in [('valid','server',[]),
+        ('expired','server',['-startdate','20000101000000Z','-enddate','20010101000000Z']),
+        ('future','server',['-startdate','20990101000000Z','-enddate','21000101000000Z'])]:
+        subprocess.run([*ca,'-in',str(root/'leaf.csr'),'-out',str(root/(name+'.crt')),
+            '-extensions',extension,*dates],stdout=null,stderr=null,check=True)
+    subprocess.run([*ca,'-gencrl','-out',str(root/'empty.crl')],stdout=null,stderr=null,check=True)
+    subprocess.run([*ca,'-revoke',str(root/'valid.crt')],stdout=null,stderr=null,check=True)
+    subprocess.run([*ca,'-gencrl','-out',str(root/'revoked.crl')],stdout=null,stderr=null,check=True)
+    (root/'invalid.crl').write_text('invalid CRL\n')
+    (root/'zero.crl').write_text('')
+    (root/'invalid.ca').write_text('invalid CA\n')
+    (root/'zero.ca').write_text('')
+    for name,accepted in [('valid',True),('expired',False),('future',False)]:
+        server,port=start('X509Vnc',certificate=name+'.crt')
+        try:
+            run(name+' leaf certificate','X509Vnc',port,['-X509CA='+str(root/'ca.crt')],accepted=accepted)
+            if name=='valid':
+                run('non-revoked CRL accepts','X509Vnc',port,['-X509CA='+str(root/'ca.crt'),'-X509CRL='+str(root/'empty.crl')])
+                run('revoked leaf rejected','X509Vnc',port,['-X509CA='+str(root/'ca.crt'),'-X509CRL='+str(root/'revoked.crl')],accepted=False)
+                for filename in ('missing.crl','invalid.crl','zero.crl'):
+                    run(filename+' rejected','X509Vnc',port,['-X509CA='+str(root/'ca.crt'),'-X509CRL='+str(root/filename)],accepted=False,expected='Cannot load specified X509CRL file')
+                for filename in ('missing.ca','invalid.ca','zero.ca'):
+                    run(filename+' rejected','X509Vnc',port,['-X509CA='+str(root/filename)],accepted=False,expected='Cannot load specified X509CA file')
+                run('case-insensitive split CRL rejected','X509Vnc',port,
+                    ['-X509CA='+str(root/'ca.crt'),'--x509crl',str(root/'missing.crl')],
+                    accepted=False,expected='Cannot load specified X509CRL file')
+                run('explicit default CRL rejected','X509Vnc',port,
+                    ['-X509CA='+str(root/'ca.crt'),'X509CRL='+str(root/'config/tigervnc/x509_crl.pem')],
+                    accepted=False,expected='Cannot load specified X509CRL file')
+                run('empty CRL override accepts','X509Vnc',port,
+                    ['-X509CA='+str(root/'ca.crt'),'-X509CRL='+str(root/'missing.crl'),'-X509CRL='])
         finally:server.terminate();server.wait(timeout=10)
 args.report.parent.mkdir(parents=True,exist_ok=True)
 args.report.write_text(json.dumps({'checks':checks,'scope':'private Xvnc, generated keys/certificate and dummy password'},indent=2)+'\n')

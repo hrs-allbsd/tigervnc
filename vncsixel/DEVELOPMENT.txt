@@ -1,340 +1,456 @@
-vnc-sixel implementation status and measurements
-================================================
-Updated: 2026-11-15 JST
+vncsixel: terminal VNC viewer
+===========================
 
-Completed milestones
---------------------
-1. Terminal/RFB viewer, keyboard/mouse input, cursor composition,
-   resize, suspend/resume, and restoration on exit/disconnect.
-2. Large framebuffer support (64M pixels) and vncviewer-compatible
-   credential sources: environment and vncpasswd files.
-3. Numeric performance logs and passive shared/view-only real-server
-   measurement in a private Xvfb/xterm.  No remote input or screenshots.
-4. Indexed fixed-palette encoding and aligned changed-region redraw.
-   Identical displayed frames are skipped.  FullFrame is the fallback.
-5. X11-independent terminal configure; upstream default builds preserved.
-6. Fast terminal queries, XTSMGRAPHICS bounds/colors, manual geometry,
-   and an eight-color fallback for limited terminals.
-7. Reproducible input-to-image latency measurements, idle-aware frame
-   deadlines, and configurable MaxFPS (1..60, default 10).
-8. Independent sparse regions with color-run/palette cost estimation;
-   SingleRect remains a fallback for diagnosis and comparison.
+Build on FreeBSD:
 
-Real-server observations
-------------------------
-Client: FreeBSD 15.1-STABLE/aarch64, xterm 410, libsixel 1.8.7.
-Remote framebuffer: 5120x4680.  Displayed snapshot: 846x774.
-Each sample lasted approximately 20 seconds in view-only mode.  Remote
-screen updates differed between samples.  These are observations, not
-controlled benchmarks or end-to-end input-latency measurements.
-No server name, username, password, or screen content is recorded here.
+  python3 /home/hrs/projects/vnc-sixel/src/vncsixel/build-freebsd.py --test
 
-Original RGB888 full frames:
-  wall=20.074s, cpu=11.046s, max RSS=147736 KiB
-  frames=50, SIXEL=11260948 bytes, updates=76
-  mean encode=208.772ms, max encode=276.465ms
-  snapshot total=148.167ms, queue peak=231782 bytes
+The helper sets and checks nice 20, configures Ninja outside the source
+checkout, and builds only vncsixel and its optional parser tests.
+Requirements are documented by BUILDING.txt, plus libsixel (pkg-config
+module libsixel), Ninja and Python 3.  The parser tests need GoogleTest.
+Use BUILD_SIXEL_VIEWER=ON, BUILD_VIEWER=OFF and BUILD_X11=OFF to configure
+without X11 development headers or FLTK.  BUILD_TESTING=OFF also omits
+tests and performance tools from package builds.  The helper uses these
+viewer/X11 settings and explicitly disables X11 package discovery.
+The vncsixel binary does not link FLTK or Xlib.
 
-Indexed PAL8 full frames:
-  wall=20.028s, cpu=2.726s, max RSS=150964 KiB
-  frames=65, SIXEL=14724433 bytes, updates=112
-  mean encode=23.537ms, max encode=32.418ms
-  snapshot total=496.361ms, queue peak=231683 bytes
+Start in a fresh xterm:
 
-Indexed PAL8 partial frames:
-  wall=20.079s, cpu=0.948s, max RSS=148132 KiB
-  frames=42, SIXEL=1225407 bytes, updates=118
-  mean encode=2.945ms, max encode=26.538ms
-  snapshot total=279.364ms, queue peak=229293 bytes
+  xterm -ti vt340 -geometry 120x40 \
+      -xrm 'XTerm*allowSendEvents: false' \
+      -xrm 'XTerm*maxGraphicSize: 4096x4096' \
+      -xrm 'XTerm*privateColorRegisters: true' \
+      -e /home/hrs/projects/vnc-sixel/obj/freebsd-sixel/vncsixel/vncsixel \
+      localhost:1
 
-The final sample used one full frame and 41 partial frames, and skipped
-26 unchanged snapshots.  Peak RSS is comparable across samples; the
-framebuffer still dominates memory use.  Encoding is no longer the main
-CPU cost in these observations.  A worker thread is deferred until a
-larger or more demanding workload demonstrates a remaining need.
+Use host:display, host::port, or the bracketed IPv6 forms supported by
+TigerVNC's network::getHostAndPort().  Passwords are prompted on the TTY
+before entering raw mode.  Trusted TLS certificates are accepted; invalid
+certificates and RSA-AES host keys without a trust decision are rejected.
+RSA-AES keys can be saved in KnownHosts; see the trust section below.
+There is no certificate override.
 
+xterm must support Sixel.  Pixel/cell-size queries are used unless
+-PixelSize WxH and -CellSize WxH explicitly supply the missing dimensions.  A terminal
+self-check is available with --terminal-check.  Avoid tmux/screen in this
+initial version.  The allowSendEvents resource must be false: xterm
+otherwise suppresses mouse reporting even if the mouse modes are set.
+Changing that resource on the command line does not alter user settings.
 
-Controlled local input latency (100 samples)
---------------------------------------------
-XTEST injects a key into xterm.  A local RFB fixture changes a response
-rectangle, and XGetImage observes the painted pixel.  Input phases use
-the same seeded sequence; two warmups are excluded.  This includes local
-RFB transport and xterm drawing, but not physical scanout, WAN RTT, or
-remote application processing.
+Controls:
 
-Previous timer, 10 fps: median=77.723ms, p95=126.163ms, max=129.607ms
-Idle-aware timer, 10 fps: median=46.770ms, p95=82.312ms, max=93.190ms
-Idle-aware timer, 30 fps: median=5.799ms, p95=17.677ms, max=25.231ms
+  Normal keys, Unicode text, arrows, editing keys and F1-F12: remote input
+  Mouse: move, left/middle/right click, drag, vertical wheel
+  Ctrl+] then q: quit
+  Ctrl+] then r: redraw
+  Ctrl+] then c/a/s: toggle Ctrl/Alt/Shift latch
+  Ctrl+] then u: release all remote keys and buttons
+  Ctrl+] twice: send Ctrl+] to the remote side
 
-Sparse-region workload
------------------------
-The fixture sends the same initial image and 40 paired distant updates.
-All 41 RFB updates are decoded in each case; slow terminal output can
-coalesce intermediate displayed frames.
+Latch state appears below the image.  For Ctrl+Alt+Delete, latch Ctrl and
+Alt, send Delete, then release all with Ctrl+] u.  For Shift+drag, use the
+Shift latch because xterm normally reserves physical Shift+mouse for its
+own selection.  Physical key release cannot be inferred from ordinary
+terminal input: character keys are sent as press/release pairs and key
+repeat becomes repeated pairs.  Games requiring true held keys are not
+supported.  Bracketed paste sends text without interpreting local command
+prefixes; control characters other than formatting are discarded.
 
-Textured, SingleRect: 22 frames, 20242841 SIXEL bytes, 4504873 encoded pixels
-Textured, sparse regions: 40 frames, 6104388 SIXEL bytes, 1445056 encoded pixels
-Blank, SingleRect: 41 frames, 195166 SIXEL bytes, 8347129 encoded pixels
-Blank, sparse selection: 41 frames, 195166 SIXEL bytes, 8347129 encoded pixels
+The display fits without enlargement, preserving aspect ratio.  It uses
+nearest-neighbor sampling, a fixed 256-color RGB332 palette, and at most
+ten redraws per second by default (-MaxFPS accepts 1..60).  Changed pixels use aligned rectangles selected by area and color-run
+complexity.  Distant changes can use separate SIXEL images; unchanged output is skipped.
+Use -FullFrame for the original full-screen fallback.  Cursor pixels are composited onto a
+snapshot; the RFB framebuffer remains intact.  All RFB updates, including
+CopyRect, are decoded even when terminal redraws are skipped.
 
-Splitting by area alone increased bytes on blank backgrounds because
-SIXEL compresses long single-color runs efficiently.  The final heuristic
-accounts for color transitions and per-DCS palette overhead; the blank
-fixture therefore retains identical output byte counts.  The estimate is
-not a guarantee of optimal compression for every image.
+SIGWINCH and focus return re-query geometry and redraw.  Mouse clicks are
+ignored while new display dimensions are pending.  Focus loss and resize
+release remote keys/buttons.  SIGTSTP restores the terminal before stopping;
+SIGCONT resumes with fresh queries.  SIGINT/SIGTERM/SIGHUP/SIGQUIT and
+connection failure restore terminal modes and termios.  SIGKILL cannot be
+handled.  Terminal output is bounded and a partial DCS is cancelled on exit.
+Do not run other programs writing to the same terminal during a session.
 
-Real-server regression with sparse regions and MaxFPS=30:
-  105 frames, 124 regions, 783880 SIXEL bytes in 20.132s.
-  CPU=2.224s, encoding=48.326ms total,
-  maximum encoding=16.211ms, RSS=147896 KiB.
-This is a separate passive observation, not the controlled fixture workload.
+Integration tests (Xvfb, x11vnc, xterm, xdotool, xev, xwd, ImageMagick):
 
-Verification
-------------
-- 29 frontend unit tests: parser, checked dimensions, quantization, damage,
-  sparse coverage/fragmentation, and frame scheduling.
-- 273 upstream unit tests and the normal vncviewer build.
-- Authentication PTY tests: echo, environment, password files, precedence.
-- Terminal PTY tests: color limits, missing replies, manual/invalid sizes,
-  graphics bounds, fast query completion, and termios restoration.
-- Actual xterm pixel comparisons: partial versus forced full redraw,
-  black erasure, adjacent colors, lower-right final band; 256/8 colors.
-- xterm integration: input, suspend/resume, resize, signal/disconnect
-  termination, and termios/private-mode restoration; 6K framebuffer.
-- Paused xterm reader: bounded pending output, RFB update progress, and
-  preservation of the latest framebuffer on resume.
-- Terminal build explicitly disables X11 discovery and links no Xlib/FLTK.
-- Port builds at nice 20 and passes check-plist and stage-qa.
+  python3 /home/hrs/projects/vnc-sixel/src/vncsixel/tests/xterm-smoke.py \
+      /home/hrs/projects/vnc-sixel/obj/freebsd-sixel/vncsixel/vncsixel \
+      --records /home/hrs/projects/vnc-sixel/records/smoke
 
-Remaining work, in order
-------------------------
-1. Remote application/WAN input latency and long-duration tests; broader encoding/pixel-format and
-   cursor/CopyRect/server-resize coverage.
-2. Representative photograph/video workloads and further tuning of the
-   sparse-region compression estimate; PhotoPalette is now available.
-3. Broader TLS/certificate and third-party RSA-AES interoperability; the
-   RSA host-key trust store and local interoperability are implemented.
-4. Publish reviewed source commits, then replace port backports with a
-   newer pinned GitHub source commit; clean poudriere jail validation.
-5. pjm native Git/CMake support and safe import of the existing clone.
-   The pjm checkout has unrelated uncommitted work and was not modified.
-   Use the separate pjm-design.txt proposal before implementing this item.
+Add --exit-mode signal or --exit-mode disconnect for the other cleanup
+paths.  Tests run private Xvfb displays and a localhost-only VNC server,
+check red Sixel pixels, remote keyboard/mouse events, suspend/resume,
+terminal resize, and termios restoration.  No existing X session or VNC
+server is used.  Existing package installations are not modified.
 
-Clipboard, tmux/screen, other terminal families, audio and H.264 remain
-outside the initial version.  Terminal protocols cannot report ordinary
-physical key releases reliably; a renderer change cannot remove that limit.
+Current limits and follow-up work:
 
-Reproduce
----------
-See README.txt for build, authentication, terminal and test commands.
-Performance flags: -PerfLog FILE, -ViewOnly, -FullFrame, -SingleRect, -MaxFPS.
-Harness: tests/real-server-perf.py (explicit private credential-file path).
-Full summary files and logs live outside the Git source tree in records/.
-Never add CREDENTIALS.txt, live-server screenshots, or credentials to Git.
+* Partial output merges changed tile runs into at most 32 regions, using
+  a single bounding rectangle when estimated compression/palette costs
+  favor it.  Adaptive palette remains follow-up work.  Forced redraw and
+  resize always repaint in full.
+* Framebuffers are limited to 64M pixels (256 MiB per 32-bit buffer),
+  allowing 6K and 8K desktops.  Total memory usage can be higher, especially
+  during resize when old and new buffers coexist.  Encoded output is limited
+  to 32 MiB.
+  The UI is single-threaded; encoding a large frame can delay input.
+* Capability queries finish on a complete reply, with a 250 ms response
+  deadline.  Manual PixelSize/CellSize overrides support missing reports.
+* The initial palette is deliberately simple; photograph quality is limited.
+* Clipboard synchronization, audio, H.264 and terminal multiplexers are
+  outside this version.  Long paste is streamed as character key pairs.
+* Tests cover FreeBSD 15.1-STABLE/aarch64 and XTerm 410.  TLS and RSA-AES
+  interoperability have not been exercised by the localhost smoke test.
 
-Local pointer milestone (2026-11-15)
------------------------------------
-Referenced Xsixel's hw/kdrive/sixel/hostcursor.c and client-xterm.c.
-Added an optional dynamically loaded XFixes backend.  Native pointer
-hiding follows image bounds and focus, and is balanced on suspend/exit.
-The server releases the hide request even when the viewer is killed.
-Unlike a pointerMode escape, this does not replace the user's xterm
-resource setting.  HideLocalCursor=0 disables the backend.
+Authentication
+==============
+Username input is echoed; interactive passwords are not echoed.
+As in vncviewer/CConn.cxx, VNC_USERNAME and VNC_PASSWORD supply credentials
+for authentication requiring both username and password.  Both variables
+must be set; otherwise both values are prompted for.  For password-only
+authentication, VNC_PASSWORD alone suffices.  Empty values count as set.
 
-Actual xterm/Xvfb cursor-pixel comparisons pass for normal termination,
-disconnect, SIGKILL, both scrollbar positions, disabled hiding, ViewOnly,
-missing WINDOWID, and servers without a cursor shape.  The remote cursor
-is also checked in the rendered image.  ViewOnly intentionally leaves
-the native pointer visible.  X11 access and WINDOWID are required;
-remote SSH sessions without them retain the terminal pointer.
+  export VNC_USERNAME=alice
+  export VNC_PASSWORD
+  vncsixel mac.example.org
 
-Validation after the local pointer change:
-- Backend enabled and disabled: 29 frontend tests each.
-- Authentication, terminal negotiation, and 6K xterm integration pass.
-- 100 local input-to-image samples at MaxFPS=30: median=6.225ms,
-  p95=16.872ms, maximum=32.207ms.  This is a regression observation,
-  not a controlled comparison against the earlier timing run.
-- Real server, shared ViewOnly, 20.067s: 136 updates, 64 frames,
-  494115 SIXEL bytes, CPU=1.733s, RSS=149300 KiB.
-  No remote input or live-server image was captured.  Native pointer
-  behavior was checked against the private local cursor fixture.
-- Port revision 5 builds at nice 20, passes check-plist and stage-qa;
-  staged binary passes native pointer, authentication and terminal tests.
-  HOSTCURSOR defaults on and declares X11/Xfixes runtime dependencies.
-  The GitHub snapshot remains fixed; patches contain unpublished changes.
+Set VNC_PASSWORD in your shell before running this example.
+For password-only VNC authentication, a file made with vncpasswd can be
+selected using the same parameter names and syntax as vncviewer:
 
-RFB interoperability milestone (2026-11-15)
-------------------------------------------
-Added protocol-smoke.py with an independent RGB framebuffer model and
-exact xterm pixel comparisons, including cleared margins after shrink.
-All 19 cases pass with 256 and 8 color registers, and with RGB565 and
-big-endian ServerInit formats.  The client explicitly requests its
-32-bit little-endian format when the server's initial format differs.
-CopyRect overlap in both directions, Hextile raw tiles, ZRLE solid tiles,
-three cursor shapes, hotspot/mask/position/clipping/removal, and both
-server resize messages are covered.  No renderer fix was needed.
-This is representative coverage, not all encoding/filter combinations;
-CursorWithAlpha currently checks opaque pixels, not partial alpha.
+  vncsixel -passwd ~/.vnc/passwd host.example.org
+  vncsixel -PasswordFile ~/.vnc/passwd host.example.org
+  vncsixel -PasswordFile="$HOME/.vnc/passwd" host.example.org
 
-A 180.135s passive real-server observation decoded 2880 updates and
-rendered 1285 frames / 1364 regions: 7276118 SIXEL bytes, 20.000s CPU,
-150628 KiB peak RSS and 155250 bytes peak terminal output queue.
-No remote input or live-server screenshot was recorded.  Three minutes
-is a smoke soak, not an overnight stability result or WAN latency test.
+VNC_PASSWORD takes precedence over the password file.  Password files
+contain the VNC-obfuscated eight-byte password, not plaintext, and are
+not used for authentication that requires a username.  This matches
+vncviewer.  Passwords are not accepted as command-line arguments.
 
-Escape timing milestone (2026-11-15)
-------------------------------------
-Added EscapeTimeout (1..1000 ms, default 50) and refreshed the idle clock
-when feeding input deferred during terminal negotiation.  The existing
-Input::expire() path and bracketed-paste isolation are preserved.
-Actual xterm tests verify separate Escape/x at 20 ms, Alt+x at 250 ms,
-isolated Escape delivery for both, and rejection of invalid values.
-29 frontend tests, authentication and terminal negotiation tests pass.
+Performance measurement
+=======================
+-PerfLog FILE writes a numeric JSON summary on exit: wall/CPU seconds,
+peak RSS (KiB on FreeBSD), decoded update count, rendered frame count,
+SIXEL bytes, actual TTY bytes, peak pending output, blocked writes, and
+snapshot/encoding times.  No hostnames, credentials or pixels are logged.
+Times cover client processing, not end-to-end remote input latency.
+Use -ViewOnly to suppress remote input, including cleanup pointer events.
+Sessions are shared by default; -Shared=0 requests exclusive access.
 
-Port revision 6 includes the timing option and updated documentation.
-Paste-rate limiting and local help remain pending; the new timeout does
-not implement either.  WAN/application latency, overnight soak tests,
-partial-alpha cursor coverage and broader encoding filters remain open.
+For a passive real-server sample in a private Xvfb/xterm:
 
-Paste pacing milestone (2026-11-15)
------------------------------------
-Input marks bracketed-paste boundaries and characters.  A bounded FIFO
-preserves subsequent typing order while PasteRate limits pasted keys
-(default 200/s, range 1..10000).  The steady-clock scheduler accrues no
-burst credits during stalls.  Local commands bypass the queue; release,
-focus loss, suspend and resize cancel pending keys.  Overflow cancels
-unsent keys, discards the remaining paste and displays a status notice.
-Already sent characters cannot be retracted.
+  python3 vncsixel/tests/real-server-perf.py /path/to/vncsixel \
+      --credentials /private/CREDENTIALS.txt --report /private/perf.json \
+      --seconds 20
 
-Pasted text excludes latched modifiers and cannot complete a local
-command prefix.  Typed keys queued behind paste retain their modifier
-state.  The queue holds at most 8192 events, not an unbounded paste.
-This limit covers the frontend key queue; TigerVNC's output stream has
-its own existing limits.  Ordinary typing is not rate-limited.
+The credential file contains vnc user:, vnc pass:, and vnc host: lines.
+Do not add it to Git.  The harness saves statistics without screenshots.
+An idle server sample does not measure interactive workload performance.
 
-Verification:
-- 33 frontend tests, including FIFO pacing/no catchup, bounds/cancel and
-  fragmented UTF-8 paste boundaries.
-- Actual xterm selection insertion at PasteRate=40: 40 characters take
-  1.018s between first and last receipt; subsequent typing stays ordered.
-- xterm tests cover modifier isolation, prefix isolation, continued RFB
-  painting during paste, local cancel, 20000-character overflow recovery,
-  immediate local quit, ViewOnly, and invalid parameter bounds.
-- Escape timing, authentication and terminal negotiation regressions pass.
-Port revision 7 includes this feature and updated documentation.
-Local help remains the next small input/usability item.  Photographic
-palette tuning, extended WAN/overnight tests and trust-store work remain.
+The fixed RGB332 palette is quantized once per displayed pixel and passed
+to libsixel as PAL8, avoiding repeated RGB-to-palette searches inside the
+encoder.  This preserves the fixed palette and disables diffusion.
 
-Port revision 7 validation:
-- Build at nice 20, check-plist, stage-qa and package pass.
-- Staged executable passes paced paste, focus-loss cancellation and
-  overflow recovery tests, Escape timing, and 19 RFB pixel comparisons.
-The paste harness synchronizes the X cut buffer before requesting an
-xterm selection insertion, and waits for paste arrival before typing
-behind it.  X selection delivery is asynchronous across clients.
+Partial update verification:
 
-Local help milestone (2026-11-15)
---------------------------------
-Ctrl+] h or ? opens paginated local help.  Esc/Enter or Ctrl+] h returns
-to the latest framebuffer, and Ctrl+] q remains available.  Opening help
-cancels pending paste and releases remote input.  Help suppresses remote
-key, pointer and paste forwarding, including in ViewOnly.  It keeps the
-native pointer visible.  Server updates continue to be decoded without
-overwriting the help; returning forces a cleared full redraw.
+  python3 vncsixel/tests/damage-smoke.py /path/to/vncsixel \
+      --records /private/damage-test
 
-The layout uses terminal text dimensions, leaves the last column unused
-and pages within the available rows.  Resize and suspend/resume repaint
-help.  Focus-in refresh now redraws without re-running geometry queries
-or cancelling pending paste; SIGWINCH retains the resize path.
+A deterministic raw-RFB server checks partial/full pixel equality in xterm
+for black-text erasure, adjacent colors, and the final lower-right band.
+The vertical origin uses lcm(cell height, 6), including 13-pixel cells.
+Every DCS includes its palette.  Only the last queued snapshot is cached;
+new snapshots wait until the current output queue is completely drained.
 
-35 frontend tests pass.  Actual xterm tests in interactive and ViewOnly
-modes verify local input isolation, receipt of server updates, latest
-image restoration, paging in a 40x12 terminal, suspend/resume and quit.
-The paste regression also passes after separating focus-in from resize.
-Port revision 8 includes local help and the focus refresh correction.
+Terminal capabilities
+=====================
+XTSMGRAPHICS queries check available color registers and graphics bounds.
+The renderer uses 256 colors when available, or an explicit eight-color
+RGB palette when the terminal reports 8..255 registers.  Fewer than eight
+registers are rejected.  If the optional color query is unsupported, the
+original 256-color baseline is retained.  Graphics bounds cap the drawing
+area without guessing a cell size.  Completed replies return immediately.
 
-Local help validation:
-- Xvfb cursor-pixel comparison verifies the native pointer is visible
-  over help and hidden again over the remote image after returning.
-- Escape timing and 6K xterm input/resize/suspend/restoration pass.
-- Port revision 8 builds at nice 20, passes check-plist, stage-qa and
-  package.  Its staged executable passes help and paste regressions.
-The input tests use a private RFB fixture; no live-server input was sent.
+  vncsixel -PixelSize=960x650 -CellSize=6x13 host
+  vncsixel --terminal-check
 
-Adaptive palette milestone (2026-11-15)
---------------------------------------
-Added opt-in PhotoPalette using sixel_dither_initialize(), with the
-high-quality histogram, averaged-pixel representatives and no diffusion.
-Adaptive mode retains RGB snapshots and emits complete changed frames
-so palette changes cannot leave stale regions.  The default RGB332
-sparse path and the eight-color fallback are unchanged.
-PerfLog palette_ms is included within encode_ms, not additional to it.
+For automated negotiation/restore tests without X11:
 
-Controlled generated warm gradient, actual xterm RGB pixels:
-  Fixed RGB332: RMSE=17.383; PhotoPalette: RMSE=4.098.
-  Fixed and PhotoPalette on eight-color terminals: RMSE=85.452 each.
-These are synthetic gradient results, not claims about a photograph
-corpus.  Quantization can merge nearby colors and palettes can change
-across frames.  Tests also check an RGB change within a single RGB332
-bin, complete palette replacement, resize erasure and unchanged skips.
+  python3 vncsixel/tests/terminal-probe.py /path/to/vncsixel
 
-Textured sparse-update fixture, same 41 received RFB updates:
-  Fixed: 40 frames, 79 regions, 6104388 SIXEL bytes, CPU=1.177s.
-  Adaptive: 14 frames, 14 regions, 16298454 bytes, CPU=4.675s.
-Slow full-frame output coalesces more intermediate displayed frames;
-compare frame counts as well as bytes.  This cost keeps the mode opt-in.
+Add --colors 8 to damage-smoke.py to verify the eight-color path in xterm.
 
-Real server, passive shared ViewOnly, PhotoPalette at MaxFPS=10:
-  20.130s, 199 updates, 77 full frames, 32156274 SIXEL bytes.
-  CPU=3.620s, peak RSS=152968 KiB, palette initialization=190.919ms,
-  total encoding=2331.591ms, peak output queue=432785 bytes.
-This separate observation is not a controlled fixed/adaptive comparison.
-No real-server images or remote input were recorded.
+Add --slow-pty to damage-smoke.py to pause xterm's PTY reader while the
+server sends further updates.  The test verifies bounded queued output,
+continued RFB decoding, and correct latest-frame display after resume.
 
-35 frontend tests pass, as do default 19-case RFB pixel comparisons
-and adaptive help/resize/suspend restoration.  Port revision 9 includes
-the feature and updated documentation.  More photographic workloads,
-palette reuse/dithering tradeoffs and sparse estimation remain open.
+See DEVELOPMENT.txt for implementation status, measured results, and
+remaining work.
 
-Port revision 9 validation: nice 20 build, check-plist, stage-qa and
-package pass.  The staged binary passes the generated quality fixture
-in fixed/adaptive and 256/8-color modes, including palette replacement,
-subtle RGB changes, resize erasure and unchanged-image skips.  Adaptive
-help restoration and default 19-case RFB pixel comparisons also pass.
+Input response latency
+======================
+-MaxFPS sets the maximum redraw rate (default 10, range 1..60).  The
+rate timer advances only when a frame is actually queued.  Idle or blocked
+attempts do not postpone the next changed frame.  Poll wakes at a pending
+frame deadline instead of adding a fixed 20 ms delay.  A higher rate can
+improve interactive response at the cost of CPU and terminal bandwidth.
 
-RSA-AES trust and TLS milestone (2026-11-15)
-------------------------------------------
-Replaced unconditional RSA host-key rejection with first-contact
-confirmation, SHA-256 over the RFB key blob, and a persistent complete-key
-store scoped to textual host and TCP port.  KnownHosts selects the file;
-StrictHostKeyChecking rejects unknown keys.  Changed keys never prompt
-for replacement.  yes saves, once accepts without saving, and all other
-answers reject.  X.509 verification remains unchanged and fail-closed.
+  vncsixel -MaxFPS=30 host
+  python3 vncsixel/tests/input-latency.py /path/to/vncsixel \
+      --viewer-option=-MaxFPS=30 --report /private/input-latency.json
 
-The store opens without following final symlinks, checks owner/type/mode,
-bounds size to 1 MiB, locks and rechecks before append, and requires sync
-before accepting a saved key.  Concurrent conflicting saves cannot replace
-an entry.  The default follows core::getvncdatadir(), including its legacy
-fallback.  A public-key helper reproduces the displayed RFB fingerprint.
-No passwords or private keys are saved in the trust store.
+The benchmark injects keys with XTEST, records receipt by a local RFB
+server, and detects the response pixel with XGetImage in the actual xterm
+window.  It reports local input-to-image latency, not physical display
+scanout, remote application processing, or WAN latency.  The default is
+100 samples after two warmups, with seeded variation of the input phase.
 
-39 frontend tests pass, including endpoint isolation, changed-key refusal,
-malformed/unsafe stores, symlinks/FIFOs, simultaneous saves and size bounds.
-19 actual Xvnc/PTY cases pass: strict rejection, default/oversized-answer rejection, once,
-explicit and default-path saves, strict matches, existing-directory reuse,
-changed keys, unsafe/malformed stores, RA2/RA2_256/RA2ne/RA2ne_256,
-anonymous TLS, trusted and untrusted X.509, and hostname mismatch.
-The expected fingerprint is independently derived from the generated PEM
-public key.  The harness isolates HOME/XDG directories and restores termios.
-Legacy authentication and terminal negotiation regressions also pass.
+Sparse output regions
+======================
+Changed tiles use 16 character columns by lcm(cell height, 6) pixels.
+Adjacent horizontal runs and matching vertical runs are merged.  Excessive
+fragmentation falls back to a bounding rectangle.  Palette overhead and
+horizontal color transitions are estimated before selecting multiple
+regions, so compressible blank areas are kept in one image.  The estimate
+is heuristic; it cannot guarantee the smallest possible encoded stream.
+Each region carries its own palette and the whole frame stays below the
+32 MiB output limit.  -SingleRect restores the previous bounding-rectangle
+path; -FullFrame still forces complete redraws.
 
-Port revision 10 includes the trust store and the public-key fingerprint
-helper in DOCS.  Revoked/expired-certificate matrices, non-TigerVNC RSA
-servers and an X.509 exception workflow remain unimplemented/unverified.
-No live-server key, private key or credential was recorded by these tests.
+  python3 vncsixel/tests/regions-benchmark.py /path/to/vncsixel \
+      --textured --report /private/sparse.json
+  python3 vncsixel/tests/regions-benchmark.py /path/to/vncsixel \
+      --textured --single-rect --report /private/single.json
 
-Port revision 10 validation: nice 20 build, check-plist, stage-qa and
-package pass.  The staged binary passes security interoperability,
-legacy authentication and 19-case RFB pixel comparisons.  Oversized
-confirmation answers are consumed through the newline and rejected,
-so their unconsumed tail cannot become later terminal input.
+Both modes receive the same initial image and 40 paired distant updates.
+Slow output may coalesce displayed frames while all RFB updates are decoded.
+Compare frame counts as well as bytes, CPU, and encoded pixels.  Omit
+--textured to verify the compressible blank-background case.  PerfLog now
+also records the number of separately encoded regions.
+
+Local pointer in xterm
+======================
+Like Xsixel's hw/kdrive/sixel/hostcursor.c, vncsixel uses XFixes 4 to hide
+the native X11 pointer while the remote cursor is drawn in the image.
+The pointer is shown in image margins, outside xterm, on focus loss,
+during suspension, and on exit.  X server cleanup also removes the hide
+request after SIGKILL; SIGKILL cannot restore terminal modes.
+
+The optional backend needs DISPLAY and xterm's WINDOWID to refer to the
+same accessible X server, and libX11.so.6 / libXfixes.so.3 at runtime.
+It loads these libraries dynamically; there is no direct Xlib linkage.
+ViewOnly sessions and servers without a received cursor shape keep the
+native pointer visible.  An explicitly empty remote cursor is respected.
+Missing libraries, XFixes support, or window information leave it visible.
+SSH sessions without access to the terminal's X server need this setup
+before automatic hiding can work.  No xterm pointerMode resource is changed.
+
+  vncsixel -HideLocalCursor=0 host
+  python3 vncsixel/build-freebsd.py --without-host-cursor
+
+ENABLE_HOST_CURSOR defaults to ON; its backend is compiled only when
+pkg-config finds x11 and xfixes development headers.  Set it OFF for a
+build without these headers.  The FreeBSD port exposes option HOSTCURSOR.
+
+  python3 vncsixel/tests/host-cursor.py /path/to/vncsixel \
+      --report /private/host-cursor.json
+
+The test compares Xvfb's cursor-bearing framebuffer with XGetImage,
+which excludes the native pointer.  It checks real pointer visibility,
+remote cursor pixels, margins, focus, suspension, and exit restoration.
+Options cover left/right scrollbars, disconnect, SIGKILL, disabled hiding,
+ViewOnly, missing WINDOWID, and missing remote cursor shape.
+
+RFB interoperability regression
+===============================
+  python3 vncsixel/tests/protocol-smoke.py /path/to/vncsixel \
+      --report /private/protocol.json
+
+The private fixture compares actual xterm pixels with an independent RGB
+model, including the area outside a resized image.  Cases cover Raw,
+Hextile raw tiles, ZRLE solid tiles, non-overlapping and overlapping
+CopyRect, RichCursor masks/hotspots, XCursor, opaque CursorWithAlpha,
+server cursor position, clipping, empty cursors, DesktopSize and
+ExtendedDesktopSize.  Add --colors 8 for the eight-color renderer.
+--server-format rgb565 or big-endian checks negotiation of the client's
+requested 32-bit wire format; it does not force 16-bit decoding.
+
+Escape key timing
+=================
+-EscapeTimeout sets the idle wait for a standalone Escape in milliseconds
+(default 50, range 1..1000).  Increase it when a terminal connection splits
+Escape-prefixed Alt/function-key sequences across delayed reads.  Decrease
+it for quicker standalone Escape delivery.  A following ordinary character
+within the wait is interpreted as Alt+character.  The event loop checks
+expiry at up to 20 ms intervals; this is not a real-time delivery promise.
+
+  vncsixel -EscapeTimeout=150 host
+  python3 vncsixel/tests/input-timing.py /path/to/vncsixel \
+      --report /private/input-timing.json
+
+Paced paste
+===========
+Bracketed paste is sent as key events at up to PasteRate characters per
+second (default 200, range 1..10000).  This is an upper bound, not a target
+throughput: rendering, terminal and network delays can make it slower.
+Ordinary typing after a paste keeps its order.  Paste text temporarily
+excludes latched modifiers; following typed keys retain their modifiers.
+Only bracketed paste is paced; this does not rate-limit ordinary typing.
+
+  vncsixel -PasteRate=100 host
+
+Ctrl+] then u cancels pending input.  Local quit stays available while
+paste drains.  Focus loss, suspension and geometry changes also cancel
+pending keys rather than sending text to a changed context.  Cancellation
+cannot retract characters already sent to the server.
+
+At most 8192 key events are queued, including typing behind a paste.
+Overflow clears the unsent queue, discards the rest of that paste and
+shows an 'Input cancelled' notice in the status line.  Split a larger
+paste into smaller pieces if it exceeds this limit.  ViewOnly suppresses
+all pasted and typed remote input.  Pasted text never invokes local
+commands or completes a previously typed Ctrl+] prefix.
+
+  python3 vncsixel/tests/paste-smoke.py /path/to/vncsixel \
+      --report /private/paste.json
+
+The test uses an actual xterm selection insertion, verifies received key
+order and timing, then checks modifier isolation, concurrent painting,
+cancel, overflow recovery, quit and ViewOnly.  It uses a private RFB
+fixture; it sends no paste to the live server.
+
+Help during a connection
+========================
+Press Ctrl+] then h (or ?) to open local help.  Esc or Enter returns to
+the latest remote image; Ctrl+] h also closes it.  Space/n advances a
+page and p returns to the previous page.  Ctrl+] q quits from help.
+The screen uses the actual terminal text area and paginates when small.
+
+Opening help cancels queued paste and releases held remote input.
+While help is open, typed keys, mouse and pasted text stay local.  The
+viewer continues receiving framebuffer updates and redraws the latest
+image on return.  Help works in ViewOnly, after resize and after suspend.
+The local X11 pointer stays visible over help.  No server desktop name,
+credentials or other remote text is inserted in the help screen.
+
+  python3 vncsixel/tests/help-smoke.py /path/to/vncsixel \
+      --report /private/help.json
+
+Optional image-adaptive palette
+===============================
+-PhotoPalette generates a palette for each changed RGB image using
+libsixel's high-quality histogram setting and averaged-pixel colors.
+It targets photographs and smooth gradients poorly represented by RGB332.
+It is opt-in: the default remains the fixed palette and sparse updates.
+No error diffusion is enabled.  Color approximation can shift between
+frames; improvement is not guaranteed for every image or photograph.
+
+  vncsixel -PhotoPalette host
+
+Each adaptive frame redraws the whole image, including its palette.
+RGB snapshots are compared before encoding; indices from different
+palettes cannot safely be compared for damage.  Unchanged snapshots are
+skipped.  SingleRect has no additional effect in this mode.  Eight-color
+terminals retain the existing fixed eight-color path.  Help, resize and
+cursor compositing continue to work.  Full-frame output can cost more
+CPU and bandwidth and coalesce more intermediate updates than the
+fixed-palette path.  RGB snapshot retention also uses three bytes per
+pixel instead of one.  PerfLog palette_ms measures palette construction
+as a component of encode_ms; do not add the two together.
+
+  python3 vncsixel/tests/photo-palette.py /path/to/vncsixel \
+      --report /private/photo.json
+  python3 vncsixel/tests/regions-benchmark.py /path/to/vncsixel \
+      --textured --photo-palette --report /private/photo-sparse.json
+
+The quality fixture generates a smooth warm gradient and measures actual
+xterm RGB error, CPU and encoded bytes against the default.  It checks
+palette replacement, changes hidden by RGB332, resize erasure, unchanged
+skips and eight-color fallback.  This synthetic fixture is not a measured
+photograph corpus.  See DEVELOPMENT.txt for results and limitations.
+
+RSA-AES host verification and TLS
+================================
+RA2 and RA2_256 verify the server key before sending credentials.  For a
+new RSA-AES endpoint, compare the displayed SHA256 fingerprint with one
+obtained through a trusted channel.  Type exactly yes to save the public
+key, once to accept only this connection, or no/Enter to reject it.
+Saved keys match the textual host and TCP port; aliases/address spellings
+and different ports have separate entries.  A changed key is rejected
+without an override prompt or replacement.  Existing sessions and files
+are not silently migrated to a new key.
+
+  vncsixel -SecurityTypes=RA2_256 host
+  vncsixel -SecurityTypes=RA2_256 -StrictHostKeyChecking \
+      -KnownHosts=/private/known_hosts host
+
+StrictHostKeyChecking rejects unknown keys without prompting.  Matching
+saved keys need no prompt.  The default file is vncsixel_rsa_known_hosts
+in TigerVNC's data directory: $XDG_DATA_HOME/tigervnc, otherwise
+$HOME/.local/share/tigervnc, with core::getvncdatadir()'s legacy ~/.vnc
+fallback.  KnownHosts overrides the filename; its parent must already
+exist.  Default directories are created only after an explicit yes.
+New files use mode 0600.  Existing files must be regular, user-owned,
+not writable by group/others, and at most 1 MiB.  Symlink files, malformed
+records and duplicate entries for the endpoint are rejected.  Saving is
+locked and rechecked; a failed write/sync rejects the connection.
+The versioned text format stores hexadecimal endpoint and complete public
+key data, not passwords or private keys.  After a legitimate rotation,
+verify the new fingerprint independently and use a separately selected
+KnownHosts file, or carefully update the verified record offline.
+
+To compute the same fingerprint from the server's public key on a
+trusted machine:
+
+  openssl pkey -in server-private.pem -pubout -out server-public.pem
+  python3 vncsixel/tests/host-key-fingerprint.py server-public.pem
+
+The fingerprint hashes the RFB key blob (bit length, padded modulus and
+exponent), not PEM text, SSH keys or SubjectPublicKeyInfo DER.  The helper
+needs Python 3 and openssl; the port includes it with DOCS as
+share/doc/vnc-sixel/host-key-fingerprint.py.  The viewer needs neither
+Python nor openssl for host verification.
+
+TLS continues to use TigerVNC/GnuTLS certificate and hostname checks.
+-X509CA and -X509CRL select additional CA/CRL files.  Untrusted or
+hostname-mismatched certificates are rejected; this RSA store does not
+create X.509 exceptions.  TLSVnc uses anonymous TLS and does not verify
+server identity.  Select X509Vnc or RA2/RA2_256 for authenticated encrypted
+sessions.  RA2ne/RA2ne_256 protect authentication only, not later traffic.
+SecurityTypes controls negotiation as in vncviewer; no global bypass for
+certificate or changed-key checks is provided.
+
+  python3 vncsixel/tests/security-smoke.py /path/to/vncsixel \
+      --report /private/security.json
+
+The test uses temporary Xvnc servers, generated keys/certificate and a
+dummy password.  It verifies acceptance/rejection, persistence, key
+changes, all four RSA-AES variants, anonymous TLS, trusted X.509,
+untrusted certificates, hostname mismatch and terminal restoration.
+
+Explicit X.509 trust files
+-------------------------
+With X509 security types, a nonempty -X509CA or -X509CRL option requires
+GnuTLS to load at least one CA certificate or CRL from that PEM file.
+Missing, malformed and empty files abort authentication.  This checks the
+actual TLS credential load, rather than a separate preflight file read.
+Unspecified default files remain optional.  An explicit empty value
+clears the requirement; repeated options use the last value.  Normal
+TigerVNC case-insensitive and split/equals option forms are supported.
+A CRL only covers its issuer and contents; it does not enable automatic
+CRL downloading or OCSP.  Keep locally supplied CRLs current.
+
+2026-11-15: Explicit X.509 file requirements and certificate matrix
+----------------------------------------------------------------
+A missing explicit CRL was reproduced with a successful connection in
+the old viewer.  CSecurityTLS now reports actual CA/CRL import counts to
+CConnection::checkCertificateFiles().  vncsixel rejects nonpositive
+counts for explicitly requested nonempty files.  Other frontends retain
+the default no-op policy.  Optional default files and explicit empty
+values remain supported; equal-to-default explicit paths are tracked.
+
+The private CA fixture covers valid, expired and not-yet-valid leaves,
+non-revoked and revoked leaves, missing/malformed/empty CA and CRL files,
+case-insensitive split options, explicit default paths and empty overrides.

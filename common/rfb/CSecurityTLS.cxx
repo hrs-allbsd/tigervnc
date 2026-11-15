@@ -251,6 +251,7 @@ void CSecurityTLS::setParam()
     const char* hostname;
     size_t len;
     bool valid;
+    int caStatus, crlStatus;
 
     ret = gnutls_certificate_allocate_credentials(&cert_cred);
     if (ret != GNUTLS_E_SUCCESS)
@@ -259,11 +260,17 @@ void CSecurityTLS::setParam()
     if (gnutls_certificate_set_x509_system_trust(cert_cred) < 1)
       vlog.error(_("Failed to load the system certificate trust store"));
 
-    if (gnutls_certificate_set_x509_trust_file(cert_cred, X509CA, GNUTLS_X509_FMT_PEM) < 0)
+    caStatus = gnutls_certificate_set_x509_trust_file(
+      cert_cred, X509CA, GNUTLS_X509_FMT_PEM);
+    if (caStatus < 0)
       vlog.error(_("Failed to load the user specified certificate authority"));
 
-    if (gnutls_certificate_set_x509_crl_file(cert_cred, X509CRL, GNUTLS_X509_FMT_PEM) < 0)
+    crlStatus = gnutls_certificate_set_x509_crl_file(
+      cert_cred, X509CRL, GNUTLS_X509_FMT_PEM);
+    if (crlStatus < 0)
       vlog.error(_("Failed to load the user specified certificate revocation list"));
+
+    client->checkCertificateFiles(caStatus, crlStatus);
 
     ret = gnutls_credentials_set(session, GNUTLS_CRD_CERTIFICATE, cert_cred);
     if (ret != GNUTLS_E_SUCCESS)

@@ -13,7 +13,7 @@
 namespace sixelvnc {
 class Connection : public rfb::CConnection {
 public:
-	Connection(const char*, Terminal&);
+	Connection(const char*, Terminal&, bool, bool);
 	~Connection();
 	int fd();
 	bool hideLocalCursor() const;
@@ -38,6 +38,8 @@ private:
 	void framebufferUpdateEnd() override;
 	void framebufferUpdateStart() override;
 	void getUserPasswd(std::string*, std::string*) override;
+	void checkCertificateFiles(int, int) override;
+	bool requireCA, requireCRL;
 	bool verifyCertificate(unsigned, const uint8_t*, size_t) override;
 	bool verifyHostKey(const uint8_t*, size_t, const char*) override;
 	std::string trustEndpoint;

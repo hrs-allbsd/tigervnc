@@ -28,7 +28,8 @@ Use host:display, host::port, or the bracketed IPv6 forms supported by
 TigerVNC's network::getHostAndPort().  Passwords are prompted on the TTY
 before entering raw mode.  Trusted TLS certificates are accepted; invalid
 certificates and RSA-AES host keys without a trust decision are rejected.
-There is no certificate override or host-key store yet.
+RSA-AES keys can be saved in KnownHosts; see the trust section below.
+There is no certificate override.
 
 xterm must support Sixel.  Pixel/cell-size queries are used unless
 -PixelSize WxH and -CellSize WxH explicitly supply the missing dimensions.  A terminal
@@ -428,3 +429,15 @@ The test uses temporary Xvnc servers, generated keys/certificate and a
 dummy password.  It verifies acceptance/rejection, persistence, key
 changes, all four RSA-AES variants, anonymous TLS, trusted X.509,
 untrusted certificates, hostname mismatch and terminal restoration.
+
+Explicit X.509 trust files
+-------------------------
+With X509 security types, a nonempty -X509CA or -X509CRL option requires
+GnuTLS to load at least one CA certificate or CRL from that PEM file.
+Missing, malformed and empty files abort authentication.  This checks the
+actual TLS credential load, rather than a separate preflight file read.
+Unspecified default files remain optional.  An explicit empty value
+clears the requirement; repeated options use the last value.  Normal
+TigerVNC case-insensitive and split/equals option forms are supported.
+A CRL only covers its issuer and contents; it does not enable automatic
+CRL downloading or OCSP.  Keep locally supplied CRLs current.

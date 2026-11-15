@@ -187,6 +187,10 @@ namespace rfb {
     virtual void getUserPasswd(std::string* user,
                                std::string* password) = 0;
 
+    // Actual CA and CRL file loading results (object counts or errors).
+    // Frontends may throw to reject failed explicit file requirements.
+    virtual void checkCertificateFiles(int, int) {}
+
     // verifyCertificate() is called when a certificate is received from
     // the server. Return true if the certificate should be accepted,
     // and false if it should be rejected.
