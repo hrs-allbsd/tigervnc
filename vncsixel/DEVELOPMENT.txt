@@ -758,3 +758,27 @@ Policy results are in records/sixel-policy.json; viewer comparisons are in
 records/size-protocol/.  compare-renderers.py additionally supports serial
 baseline/candidate trials, alternating order and rejecting output-volume
 comparisons when rendered frame/region/pixel counts differ.
+
+Serialized full-viewer comparison: three trials per binary and background
+(12 trials total), alternating baseline/candidate order.  Frame, region
+and pixel counts match across all trials within each background.  Solid
+output stays at 195166 bytes.  Textured output falls from 6104388 to
+6103484 bytes (904 bytes, about 0.015%).  Median encode times are
+336.375/341.796 ms for solid and 1020.585/1015.981 ms for textured.
+Trial timing variation is substantial, so no viewer speedup is claimed.
+The microbenchmark's pattern-specific gains do not generalize to every
+complete viewer workload.  Records: size-render-comparison/summary.json.
+
+Port revision 17 builds cleanly at nice 20 and passes check-plist,
+stage-qa and package generation.  The staged binary passes 50 actual
+xterm JPEG/fragmented-update comparisons, authentication and terminal
+negotiation checks.  The source viewer also passes the four fixed/adaptive
+palette and 8-color fallback cases.  A concurrent xterm launch failed
+before viewer startup during additional checks; serial reruns pass.
+
+The staged viewer connects to the real server in shared/ViewOnly mode
+for 30.120 seconds: 1416 updates, 251 frames, 2247812 encoded bytes.
+No input or screenshot is forwarded/captured.  This is an interoperability
+smoke test, not a baseline performance comparison or memory stability test.
+Records: size-photo.json, size-port-*.log/json and size-real.json.
+Representative photo/video tuning and multi-hour server runs remain open.
