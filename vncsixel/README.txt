@@ -777,3 +777,21 @@ flicker: no timing, human evaluation or display persistence is modeled.
 again.  Its displayed pixels must exactly match the first presentation,
 checking for palette history or stale output.  This adds one frame/update
 to the viewer totals.  No photographs or screenshots enter the report.
+
+Paced producer mode:
+  tests/photo-palette.py VIEWER --image IMAGE --pan-frames 60 \
+      --return-image --pan-rate 60 --report REPORT.json
+--pan-rate accepts 1..120 updates/second and requires --return-image.
+Conversions finish before the producer clock starts.  Each update uses an
+absolute monotonic deadline; a single occupied server slot delays the
+producer instead of discarding data.  queued_seconds and maximum schedule
+lateness expose that backpressure.  No intermediate screenshots or quality
+measurements are taken in this mode; per-frame/temporal arrays cover only
+the measurements actually made and can be empty.  Final fixed-palette
+pixels are checked against the final source, then every mode must return
+exactly to its initial photograph.  Adaptive final observation checks a
+changed stable image, not an independent pixel oracle for that last frame.
+final_observed_seconds includes screenshot/stability polling overhead and
+is not terminal latency.  updates_minus_frames counts the viewer summary
+difference, not individually observed dropped terminal frames.  Viewer
+MaxFPS remains 30; this tests aggregation, not maximum terminal throughput.
