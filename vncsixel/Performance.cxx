@@ -38,7 +38,7 @@ Performance::~Performance()
 	    "\"encoded_bytes\":%llu,\"skipped_frames\":%llu,"
 	    "\"regions\":%llu,\"full_frames\":%llu,\"partial_frames\":%llu,\"encoded_pixels\":%llu,"
 	    "\"tty_bytes\":%llu,\"peak_queue_bytes\":%llu,\"blocked_writes\":%llu,"
-	    "\"snapshot_ms\":%.6f,\"encode_ms\":%.6f,\"max_encode_ms\":%.6f,"
+	    "\"snapshot_ms\":%.6f,\"encode_ms\":%.6f,\"max_encode_ms\":%.6f,\"palette_ms\":%.6f,"
 	    "\"remote_width\":%d,\"remote_height\":%d,\"width\":%d,\"height\":%d}\n",
 	    seconds, cpu(usage) - initialCpu, usage.ru_maxrss,
 	    (unsigned long long)updates, (unsigned long long)frames,
@@ -47,7 +47,7 @@ Performance::~Performance()
 	    (unsigned long long)encodedPixels,
 	    (unsigned long long)ttyBytes, (unsigned long long)peakQueueBytes,
 	    (unsigned long long)blockedWrites,
-	    snapshotMs, encodeMs, maxEncodeMs, remoteWidth, remoteHeight,
+	    snapshotMs, encodeMs, maxEncodeMs, paletteMs, remoteWidth, remoteHeight,
 	    width, height);
 	fclose(file);
 }

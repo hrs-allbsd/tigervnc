@@ -37,6 +37,7 @@ int main(int argc, char** argv)
 		    "-CellSize WxH, -PixelSize WxH: override terminal geometry.\n"
 		    "-SingleRect: use one bounding rectangle instead of sparse regions.\n"
 		    "-FullFrame: disable partial updates for comparison or fallback.\n"
+		    "-PhotoPalette: adaptive palette with full-frame output (256 colors).\n"
 		    "-HideLocalCursor=0: retain the local X11 pointer.\n"
 		    "-MaxFPS 1..60: redraw rate limit (default 10).\n"
 		    "-EscapeTimeout 1..1000: Escape sequence wait in ms (default 50).\n"

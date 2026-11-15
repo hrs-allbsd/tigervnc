@@ -30,6 +30,8 @@ core::IntParameter pasteRate("PasteRate",
 core::StringParameter passwordFile("PasswordFile",
     "Password file for VNC authentication", "");
 core::AliasParameter passwd("passwd", &passwordFile);
+core::BoolParameter photoPalette("PhotoPalette",
+    "Use an adaptive full-frame palette with 256-color terminals", false);
 core::BoolParameter singleRect("SingleRect", "Use one changed rectangle per frame", false);
 core::BoolParameter fullFrame("FullFrame", "Disable partial screen updates", false);
 core::BoolParameter sharedSession("Shared", "Request a shared VNC session", true);
@@ -218,17 +220,27 @@ bool Connection::render()
 			}
 		}
 	}
-	std::vector<uint8_t> indexed(static_cast<size_t>(displayWidth) * displayHeight);
-	for (size_t i = 0; i < indexed.size(); i++)
-		indexed[i] = terminal.paletteColors == 256 ?
-		    rgb332(rgb[i * 3], rgb[i * 3 + 1], rgb[i * 3 + 2]) :
-		    ((rgb[i * 3] >= 128 ? 4 : 0) |
-		    (rgb[i * 3 + 1] >= 128 ? 2 : 0) |
-		    (rgb[i * 3 + 2] >= 128 ? 1 : 0));
-	auto regions = damageRegions(previousFrame, indexed, displayWidth,
-	    displayHeight, terminal.cellWidth, terminal.cellHeight,
-	    fullFrame || forceFull || displayWidth != oldWidth ||
-	    displayHeight != oldHeight, singleRect, terminal.paletteColors);
+	bool photo = photoPalette && terminal.paletteColors == 256;
+	std::vector<uint8_t> indexed;
+	std::vector<DamageRect> regions;
+	bool force = fullFrame || forceFull || displayWidth != oldWidth ||
+	    displayHeight != oldHeight;
+	if (photo) {
+		/* Palette indices from different frames cannot be compared. */
+		if (force || previousFrame != rgb)
+			regions.push_back({0, 0, displayWidth, displayHeight});
+	} else {
+		indexed.resize(static_cast<size_t>(displayWidth) * displayHeight);
+		for (size_t i = 0; i < indexed.size(); i++)
+			indexed[i] = terminal.paletteColors == 256 ?
+			    rgb332(rgb[i * 3], rgb[i * 3 + 1], rgb[i * 3 + 2]) :
+			    ((rgb[i * 3] >= 128 ? 4 : 0) |
+			    (rgb[i * 3 + 1] >= 128 ? 2 : 0) |
+			    (rgb[i * 3 + 2] >= 128 ? 1 : 0));
+		regions = damageRegions(previousFrame, indexed, displayWidth,
+		    displayHeight, terminal.cellWidth, terminal.cellHeight,
+		    force, singleRect, terminal.paletteColors);
+	}
 	if (regions.empty()) {
 		performance.snapshotMs += std::chrono::duration<double, std::milli>(
 		    std::chrono::steady_clock::now() - snapshotStart).count();
@@ -248,11 +260,13 @@ bool Connection::render()
 	double cropMs = 0;
 	for (const auto& rect : regions) {
 		auto cropStart = std::chrono::steady_clock::now();
-		std::vector<uint8_t> region(static_cast<size_t>(rect.width) * rect.height);
+		int channels = photo ? 3 : 1;
+		const auto& source = photo ? rgb : indexed;
+		std::vector<uint8_t> region(static_cast<size_t>(rect.width) * rect.height * channels);
 		for (int y = 0; y < rect.height; y++)
-			std::copy_n(indexed.data() + static_cast<size_t>(rect.y + y) *
-			    displayWidth + rect.x, rect.width,
-			    region.data() + static_cast<size_t>(y) * rect.width);
+			std::copy_n(source.data() + (static_cast<size_t>(rect.y + y) *
+			    displayWidth + rect.x) * channels, rect.width * channels,
+			    region.data() + static_cast<size_t>(y) * rect.width * channels);
 		cropMs += std::chrono::duration<double, std::milli>(
 		    std::chrono::steady_clock::now() - cropStart).count();
 		sixel_output_t* output = nullptr;
@@ -276,11 +290,26 @@ bool Connection::render()
 			palette[i * 3 + 1] = ((i >> 2) & 7) * 255 / 7;
 			palette[i * 3 + 2] = (i & 3) * 255 / 3;
 		}
-		sixel_dither_set_palette(dither, palette);
-		sixel_dither_set_pixelformat(dither, SIXEL_PIXELFORMAT_PAL8);
+		if (photo) {
+			auto start = std::chrono::steady_clock::now();
+			SIXELSTATUS result = sixel_dither_initialize(dither, region.data(),
+			    rect.width, rect.height, SIXEL_PIXELFORMAT_RGB888,
+			    SIXEL_LARGE_NORM, SIXEL_REP_AVERAGE_PIXELS, SIXEL_QUALITY_HIGH);
+			performance.paletteMs += std::chrono::duration<double, std::milli>(
+			    std::chrono::steady_clock::now() - start).count();
+			if (SIXEL_FAILED(result)) {
+				sixel_dither_unref(dither);
+				sixel_output_unref(output);
+				throw std::runtime_error("Cannot create adaptive SIXEL palette");
+			}
+			sixel_dither_set_pixelformat(dither, SIXEL_PIXELFORMAT_RGB888);
+		} else {
+			sixel_dither_set_palette(dither, palette);
+			sixel_dither_set_pixelformat(dither, SIXEL_PIXELFORMAT_PAL8);
+		}
 		sixel_dither_set_diffusion_type(dither, SIXEL_DIFFUSE_NONE);
 		sixel_dither_set_body_only(dither, 0);
-		SIXELSTATUS result = sixel_encode(region.data(), rect.width, rect.height, 1, dither, output);
+		SIXELSTATUS result = sixel_encode(region.data(), rect.width, rect.height, channels, dither, output);
 		sixel_dither_unref(dither);
 		sixel_output_unref(output);
 		if (SIXEL_FAILED(result) || encoded.failed)
@@ -305,7 +334,8 @@ bool Connection::render()
 	if (displayWidth != oldWidth || displayHeight != oldHeight)
 		terminal.queue("\033[H\033[2J");
 	terminal.queue(frame);
-	previousFrame.swap(indexed);
+	if (photo) previousFrame.swap(rgb);
+	else previousFrame.swap(indexed);
 	forceFull = false;
 	performance.encodedPixels += pixelsEncoded;
 	if (regions.size() == 1 && regions[0].width == displayWidth &&
