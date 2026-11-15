@@ -110,6 +110,8 @@ Remaining work, in order
 ------------------------
 1. Real WAN/remote-application input latency and multi-hour runs;
    investigate the real-server RSS increase after the initial warmup.
+   Mixed Raw/Tight/ZRLE plus palette/gradient/JPEG retention traces are
+   now covered locally; multi-hour real-server stability remains open.
    Broader server interoperability and representative cursor workloads.
    Semitransparent cursors, Tight/JPEG,
    Hextile/ZRLE, CopyRect and resize have a 12-configuration pixel matrix.
@@ -702,3 +704,32 @@ the JPEG mixed case has 241.  A separate ten-repeat JPEG/noise run has
 are synthetic deterministic inputs, not representative photos or video.
 Elapsed time includes fixture generation, rendering and sampling waits;
 it is not a pure viewer throughput benchmark.
+
+The longer local JPEG/noise trace completes 577 updates in 153.291 seconds
+including fixture setup.  Raw accounts for 97 updates; Tight copy, ZRLE,
+palette, gradient and JPEG each account for 96.  Each Tight stream is used
+72 times, with 12 reset boundaries.  Every phase retains exactly
+33554432 bytes of staging capacity.  Phase-end allocated bytes range
+62871744..63648624 and finish 226936 bytes below the first large phase.
+RSS at the same phase boundaries rises from 78448 to 82780 KiB.
+
+This separates retained staging capacity and live allocation variation
+from RSS growth in this trace; it does not prove long-term stability or
+attribute all RSS growth to a specific component.  No allocation policy
+change is justified by this controlled run.  It exercises synthetic
+single-rectangle updates rather than real application timing, motion,
+server interoperability or a representative video workload.  The fixture
+and matrix run concurrently for part of this observation, affecting timing.
+
+All ten matrix cases pass, totaling 1210 updates.  Mixed solid, mixed
+noise and mixed JPEG/noise retain 33554432 bytes across all phases.
+Individual cases preserve the previous 32 KiB/32 MiB capacities.
+Reports: records/mixed-memory/summary.json and per-case JSON/logs;
+records/mixed-noise-soak.json and mixed-soak-summary.json contain the
+longer trace.  All are private loopback xterm fixtures with no live data.
+
+The viewer runtime and port revision 16 package are unchanged.  Existing
+C++ and pixel suites are not rerun for this fixture/documentation change;
+the modified individual cases are rerun as part of the ten-case matrix.
+Multi-hour real-server measurements and representative image/video tuning
+remain the next substantial validation/performance tasks.
