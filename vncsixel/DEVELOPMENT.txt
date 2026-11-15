@@ -816,3 +816,22 @@ benchmark build run at nice 20; timing samples run at normal priority.
 Records: snapshot-benchmark.json, snapshot-build.log,
 snapshot-protocol-serial/ and the failed snapshot-protocol/ startup logs.
 build-freebsd.py --benchmark builds the optional benchmark at nice 20.
+
+Port revision 18 builds cleanly at nice 20 and passes check-plist,
+stage-qa and package generation.  Its staged binary passes 50 actual
+xterm JPEG/fragmented-update comparisons and all four fixed/adaptive
+palette/8-color cases.  The private x11vnc/Xvfb 6016x3384 integration
+passes scaled SIXEL rendering, keyboard/mouse input, resume/resize and
+terminal restoration on signal exit.  Inputs and screenshots in this
+integration belong only to its synthetic local X server.
+
+A separate real-server Shared/ViewOnly smoke test completes 30.145 seconds
+with 645 updates, 144 frames and 1159645 encoded bytes, displaying the
+5120x4680 framebuffer at 846x774.  It records numeric data only, with no
+input forwarding or screenshots.  Server activity differs from earlier
+runs, so its totals are not a controlled before/after speed comparison.
+
+Records: snapshot-port-protocol.json, snapshot-port-photo.json,
+snapshot-local-6k/ and snapshot-real.json.  Multi-hour real-server memory
+stability, representative photo/video tuning and the intermittent test
+xterm startup problem remain open.  No installation or push is performed.
