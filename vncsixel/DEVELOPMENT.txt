@@ -479,3 +479,9 @@ the fixture's small codec error before fixed-palette pixel comparisons.
 This verifies transport/channel placement, not independent JPEG codec
 quality or representative photograph/video workloads.  The 39 frontend
 tests pass.  Port revision 13 backports the two options and documentation.
+
+Port revision 13 validation: clean nice 20 build, check-plist, stage-qa
+and package pass.  The staged viewer passes all 13 option cases, 41
+fragmented/JPEG display comparisons, 42 security cases, authentication
+and terminal negotiation.  Distribution changes are limited to the
+viewer options and docs; no upstream decoder modifications are needed.
