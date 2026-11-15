@@ -16,7 +16,7 @@ public:
 	~Connection();
 	int fd();
 	void process();
-	void render();
+	bool render();
 	bool input(const InputEvent&);
 	void releaseInput();
 	void redraw() { dirty = forceFull = true; }

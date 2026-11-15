@@ -58,7 +58,7 @@ prefixes; control characters other than formatting are discarded.
 
 The display fits without enlargement, preserving aspect ratio.  It uses
 nearest-neighbor sampling, a fixed 256-color RGB332 palette, and at most
-ten redraws per second.  Changed pixels are enclosed in a rectangle
+ten redraws per second by default (-MaxFPS accepts 1..60).  Changed pixels are enclosed in a rectangle
 aligned to character cells and SIXEL bands; unchanged output is skipped.
 Use -FullFrame for the original full-screen fallback.  Cursor pixels are composited onto a
 snapshot; the RFB framebuffer remains intact.  All RFB updates, including
@@ -186,3 +186,21 @@ continued RFB decoding, and correct latest-frame display after resume.
 
 See DEVELOPMENT.txt for implementation status, measured results, and
 remaining work.
+
+Input response latency
+======================
+-MaxFPS sets the maximum redraw rate (default 10, range 1..60).  The
+rate timer advances only when a frame is actually queued.  Idle or blocked
+attempts do not postpone the next changed frame.  Poll wakes at a pending
+frame deadline instead of adding a fixed 20 ms delay.  A higher rate can
+improve interactive response at the cost of CPU and terminal bandwidth.
+
+  vncsixel -MaxFPS=30 host
+  python3 vncsixel/tests/input-latency.py /path/to/vncsixel \
+      --viewer-option=-MaxFPS=30 --report /private/input-latency.json
+
+The benchmark injects keys with XTEST, records receipt by a local RFB
+server, and detects the response pixel with XGetImage in the actual xterm
+window.  It reports local input-to-image latency, not physical display
+scanout, remote application processing, or WAN latency.  The default is
+100 samples after two warmups, with seeded variation of the input phase.

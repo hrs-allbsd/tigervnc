@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 #include "Connection.h"
+#include "FrameClock.h"
 #include <core/Configuration.h>
 #include <cerrno>
 #include <chrono>
@@ -11,6 +12,7 @@
 #include <unistd.h>
 
 namespace {
+core::IntParameter maxFPS("MaxFPS", "Maximum terminal redraw rate", 10, 1, 60);
 volatile sig_atomic_t stopped = 0, resized = 0, suspended = 0;
 void signalHandler(int number)
 {
@@ -31,6 +33,7 @@ int main(int argc, char** argv)
 		    "-ViewOnly: suppress remote input; -Shared=0: exclusive session.\n"
 		    "-CellSize WxH, -PixelSize WxH: override terminal geometry.\n"
 		    "-FullFrame: disable partial updates for comparison or fallback.\n"
+		    "-MaxFPS 1..60: redraw rate limit (default 10).\n"
 		    "-PerfLog file: numeric performance summary in JSON.\n"
 		    "Run in xterm -ti vt340 with allowSendEvents:false.\n"
 		    "Ctrl+] then q quits; c/a/s latch modifiers; u releases input.\n"
@@ -79,7 +82,7 @@ int main(int argc, char** argv)
 			else if (!connection.input(e)) stopped = 1;
 		});
 		auto lastInput = std::chrono::steady_clock::now();
-		auto next = std::chrono::steady_clock::now();
+		sixelvnc::FrameClock frames(maxFPS);
 		while (!stopped) {
 			if (suspended && entered) {
 				suspended = 0;
@@ -108,14 +111,12 @@ int main(int argc, char** argv)
 			if (entered && !deferred.empty()) input.feed(deferred.data(), deferred.size());
 			auto now = std::chrono::steady_clock::now();
 			if (now - lastInput > std::chrono::milliseconds(50)) input.expire();
-			if (entered && now >= next) {
-				connection.render();
-				next = now + std::chrono::milliseconds(100);
-			}
+			if (entered && frames.due(now) && connection.render())
+				frames.rendered(now);
 			terminal.flush();
 			pollfd fds[] = {{connection.fd(), POLLIN, 0},
 			    {terminal.fd(), static_cast<short>(POLLIN | (terminal.pending() ? POLLOUT : 0)), 0}};
-			if (poll(fds, 2, 20) < 0 && errno != EINTR)
+			if (poll(fds, 2, frames.pollTimeout(std::chrono::steady_clock::now())) < 0 && errno != EINTR)
 				throw std::runtime_error("poll failed");
 			if (fds[1].revents & POLLIN) {
 				char bytes[1024];

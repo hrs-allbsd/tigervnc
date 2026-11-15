@@ -170,10 +170,10 @@ int appendSixel(char* data, int size, void* context)
 	return out.failed ? -1 : size;
 }
 }
-void Connection::render()
+bool Connection::render()
 {
 	if (!ready || updating || !dirty || terminal.pending())
-		return;
+		return false;
 	auto snapshotStart = std::chrono::steady_clock::now();
 	auto* fb = getFramebuffer();
 	int rw = fb->width(), rh = fb->height();
@@ -218,7 +218,7 @@ void Connection::render()
 		    std::chrono::steady_clock::now() - snapshotStart).count();
 		performance.skipped++;
 		dirty = false;
-		return;
+		return false;
 	}
 	std::vector<uint8_t> region(static_cast<size_t>(rect.width) * rect.height);
 	for (int y = 0; y < rect.height; y++)
@@ -281,6 +281,7 @@ void Connection::render()
 		performance.partialFrames++;
 	status();
 	dirty = false;
+	return true;
 }
 
 void Connection::setCursor(int w, int h, const core::Point& hotspot, const uint8_t* data)
