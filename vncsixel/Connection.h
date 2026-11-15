@@ -3,6 +3,7 @@
 #define VNCSIXEL_CONNECTION_H
 #include "Terminal.h"
 #include "Input.h"
+#include "Viewport.h"
 #include "KeyQueue.h"
 #include "Performance.h"
 #include <rfb/CConnection.h>
@@ -33,6 +34,7 @@ private:
 	void setCursorPos(const core::Point&) override;
 	void modifiers(unsigned);
 	void status();
+	bool viewportCommand(uint32_t);
 	void toggleHelp();
 	void resizeFramebuffer() override;
 	void framebufferUpdateEnd() override;
@@ -59,6 +61,8 @@ private:
 	unsigned latched = 0, held = 0, mouseMods = 0;
 	uint16_t buttons = 0;
 	core::Point pointer = {0, 0};
+	Viewport viewport, displayedViewport;
+	bool trackPointer = false;
 };
 }
 #endif

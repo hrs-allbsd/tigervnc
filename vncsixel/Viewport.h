@@ -6,6 +6,7 @@
 #include <cmath>
 #include <cstdint>
 #include <string>
+#include <stdexcept>
 
 namespace sixelvnc {
 /* Origins are in virtual (scaled desktop) pixels, never framebuffer bytes. */
@@ -34,6 +35,8 @@ public:
 			vh = std::max(1, int(int64_t(rh) * percent / 100));
 		}
 		width = std::min(tw, vw); height = std::min(th, vh);
+		if (uint64_t(width) * height > 64ULL * 1024 * 1024)
+			throw std::runtime_error("Visible viewport exceeds 64M pixels");
 		center(cx, cy);
 	}
 	int sourceX(int dx) const { return int(int64_t(x + dx) * rw / vw); }

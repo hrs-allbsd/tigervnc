@@ -290,26 +290,33 @@ bool Connection::render()
 	auto snapshotStart = std::chrono::steady_clock::now();
 	auto* fb = getFramebuffer();
 	int rw = fb->width(), rh = fb->height();
-	double scale = std::min(1.0, std::min(double(terminal.width) / rw,
-	    double(terminal.height) / rh));
+	viewport.configure(rw, rh, terminal.width, terminal.height);
+	if (trackPointer) {
+		if (viewport.track(pointer.x, pointer.y)) forceFull = true;
+		trackPointer = false;
+	}
 	int oldWidth = displayWidth, oldHeight = displayHeight;
-	displayWidth = std::max(1, int(rw * scale));
-	displayHeight = std::max(1, int(rh * scale));
+	displayWidth = viewport.width;
+	displayHeight = viewport.height;
 	std::vector<uint8_t> rgb(static_cast<size_t>(displayWidth) * displayHeight * 3);
 	int stride;
 	const uint8_t* pixels = fb->getBuffer(fb->getRect(), &stride);
 	/* resizeFramebuffer() always allocates little-endian B,G,R,X bytes. */
 	sampleBGRX(rgb.data(), pixels, stride, rw, rh, displayWidth,
-	    displayHeight);
+	    displayHeight, viewport.x, viewport.y, viewport.vw, viewport.vh);
 	const auto& cursor = server.cursor();
 	performance.cursorSamples += compositeCursor(rgb.data(), displayWidth,
 	    displayHeight, rw, rh, cursor.getBuffer(), cursor.width(),
 	    cursor.height(), cursor.hotspot().x, cursor.hotspot().y,
-	    pointer.x, pointer.y);
+	    pointer.x, pointer.y, viewport.x, viewport.y, viewport.vw, viewport.vh);
 	bool photo = photoPalette && terminal.paletteColors == 256;
 	std::vector<uint8_t> indexed;
 	std::vector<DamageRect> regions;
-	bool force = fullFrame || forceFull || displayWidth != oldWidth ||
+	bool transformChanged = viewport.x != displayedViewport.x ||
+	    viewport.y != displayedViewport.y || viewport.vw != displayedViewport.vw ||
+	    viewport.vh != displayedViewport.vh || viewport.rw != displayedViewport.rw ||
+	    viewport.rh != displayedViewport.rh;
+	bool force = fullFrame || forceFull || transformChanged || displayWidth != oldWidth ||
 	    displayHeight != oldHeight;
 	if (photo) {
 		/* Palette indices from different frames cannot be compared. */
@@ -421,6 +428,7 @@ bool Connection::render()
 	if (displayWidth != oldWidth || displayHeight != oldHeight)
 		terminal.queue("\033[H\033[2J");
 	terminal.queue(frame);
+	displayedViewport = viewport;
 	if (photo) previousFrame.swap(rgb);
 	else previousFrame.swap(indexed);
 	forceFull = false;
@@ -444,6 +452,7 @@ void Connection::setCursor(int w, int h, const core::Point& hotspot, const uint8
 void Connection::setCursorPos(const core::Point& pos)
 {
 	pointer = pos;
+	trackPointer = true;
 	dirty = true;
 }
 void Connection::modifiers(unsigned wanted)
@@ -491,13 +500,44 @@ void Connection::toggleHelp()
 	displayWidth = displayHeight = 0;
 	redraw();
 }
+bool Connection::viewportCommand(uint32_t key)
+{
+	if (key != '+' && key != '=' && key != '-' && key != 'f' &&
+	    key != '0' && key != 'p' && key != XK_Left && key != XK_Right &&
+	    key != XK_Up && key != XK_Down)
+		return false;
+	/* Navigation must not leave a remote drag or a queued paste running. */
+	releaseInput();
+	viewport.configure(server.width(), server.height(), terminal.width,
+	    terminal.height);
+	switch (key) {
+	case '+': case '=': viewport.zoom(1, pointer.x, pointer.y); break;
+	case '-': viewport.zoom(-1, pointer.x, pointer.y); break;
+	case 'f': viewport.select(0, pointer.x, pointer.y); break;
+	case '0': viewport.select(100, pointer.x, pointer.y); break;
+	case 'p':
+		viewport.follow = !viewport.follow;
+		if (viewport.follow) viewport.track(pointer.x, pointer.y);
+		break;
+	case XK_Left: viewport.pan(-1, 0); break;
+	case XK_Right: viewport.pan(1, 0); break;
+	case XK_Up: viewport.pan(0, -1); break;
+	case XK_Down: viewport.pan(0, 1); break;
+	}
+	trackPointer = false;
+	redraw();
+	return true;
+}
 void Connection::status()
 {
 	if (help) return;
-	terminal.queue("\033[" + std::to_string(terminal.height / terminal.cellHeight + 2) +
-	    ";1H\033[2KCtrl+] h help, q quit, r redraw, c/a/s latch, u release  [" +
+	std::string text = viewport.label() + " | Ctrl+] h help [" +
 	    ((latched & 4) ? "Ctrl " : "") + ((latched & 2) ? "Alt " : "") +
-	    ((latched & 1) ? "Shift" : "") + "] " + inputNotice);
+	    ((latched & 1) ? "Shift" : "") + "] " + inputNotice;
+	/* Avoid wrapping the status line into the remote image. */
+	size_t width = std::max(1, terminal.textWidth / terminal.cellWidth - 1);
+	terminal.queue("\033[" + std::to_string(terminal.height / terminal.cellHeight + 2) +
+	    ";1H\033[2K" + text.substr(0, width));
 }
 bool Connection::input(const InputEvent& e)
 {
@@ -535,10 +575,15 @@ bool Connection::input(const InputEvent& e)
 		}
 		return true;
 	}
-	if (!e.pasted && e.kind == InputEvent::Key && prefix &&
-	    (e.key == 'h' || e.key == '?')) {
-		toggleHelp();
-		return true;
+	if (!e.pasted && e.kind == InputEvent::Key && prefix) {
+		if (e.key == 'h' || e.key == '?') {
+			toggleHelp();
+			return true;
+		}
+		if (viewportCommand(e.key)) {
+			prefix = false;
+			return true;
+		}
 	}
 	if (viewOnly) {
 		if (e.kind == InputEvent::Key && prefix) {
@@ -587,8 +632,9 @@ bool Connection::input(const InputEvent& e)
 	if ((x >= displayWidth || y >= displayHeight) && !buttons && !e.release) return true;
 	x = std::max(0, std::min(displayWidth - 1, x));
 	y = std::max(0, std::min(displayHeight - 1, y));
-	pointer = {int(int64_t(x) * server.width() / displayWidth),
-	    int(int64_t(y) * server.height() / displayHeight)};
+	pointer = {std::min(server.width() - 1, displayedViewport.sourceX(x)),
+	    std::min(server.height() - 1, displayedViewport.sourceY(y))};
+	if (e.button & 32) trackPointer = true;
 	unsigned button = e.button & 3;
 	mouseMods = e.modifiers;
 	modifiers(latched | mouseMods);

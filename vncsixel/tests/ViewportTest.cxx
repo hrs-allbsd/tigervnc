@@ -80,3 +80,16 @@ TEST(Viewport, SnapshotAndMouseUseSameSourcePixels)
 		EXPECT_EQ(rgb.front(), 0xa5); EXPECT_EQ(rgb.back(), 0xa5);
 	}
 }
+
+TEST(Viewport, LargeVirtualDesktopDoesNotAllocateItsFullArea)
+{
+	Viewport v;
+	v.configure(65535, 1024, 8192, 4096);
+	v.select(400, 65534, 1023);
+	EXPECT_EQ(v.vw, 262140);
+	EXPECT_EQ(v.width, 8192); EXPECT_EQ(v.height, 4096);
+	EXPECT_EQ(v.sourceX(v.width - 1), 65534);
+	v.select(0, 0, 0);
+	v.configure(8192, 8192, 16384, 16384);
+	EXPECT_THROW(v.select(400, 0, 0), std::runtime_error);
+}

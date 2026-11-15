@@ -62,6 +62,7 @@ int main(int argc, char** argv)
 		    "-PerfLog file: numeric performance summary in JSON.\n"
 		    "-MemoryLog file: allocator JSONL; -MemoryLogInterval 1..3600 seconds.\n"
 		    "Run in xterm -ti vt340 with allowSendEvents:false.\n"
+		    "Ctrl+] then +/=/- zoom, f fit, 0 100%, p follow, arrows pan.\n"
 		    "Ctrl+] then h shows help; q quits; c/a/s latch; u releases input.\n"
 		    "See vncsixel/README.txt for build and terminal settings.");
 		return 0;
