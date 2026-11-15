@@ -87,7 +87,8 @@ int Connection::fd() { return socket->getFd(); }
 bool Connection::hideLocalCursor() const { return ready && cursorKnown && !viewOnly && !help; }
 void Connection::process()
 {
-	performance.sampleMemory();
+	if (performance.memoryDue())
+		performance.sampleMemory(decoderBufferCapacity());
 	/* Include data already buffered by a TLS stream. Bound work per turn. */
 	for (int i = 0; i < 64 && getInStream()->hasData(1); i++)
 		if (!processMsg())

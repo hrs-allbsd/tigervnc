@@ -12,7 +12,8 @@ public:
 	~MemoryLog();
 	MemoryLog(const MemoryLog&) = delete;
 	MemoryLog& operator=(const MemoryLog&) = delete;
-	void sample(uint64_t, uint64_t, bool = false);
+	bool due() const;
+	void sample(uint64_t, uint64_t, bool = false, uint64_t = 0);
 private:
 	FILE* file = nullptr;
 	std::chrono::steady_clock::time_point start, next;

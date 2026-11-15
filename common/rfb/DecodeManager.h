@@ -53,6 +53,9 @@ namespace rfb {
 
     void flush();
 
+    // Call on the producer thread, between decodeRect() calls.
+    size_t bufferCapacity();
+
   private:
     void logStats();
 

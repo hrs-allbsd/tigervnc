@@ -30,7 +30,7 @@ TEST_F(MemorySamples, PeriodicAndFinalWithoutPerformanceLog)
 		p.updates = 7; p.frames = 3;
 		p.sampleMemory();
 		std::this_thread::sleep_for(std::chrono::milliseconds(1100));
-		p.sampleMemory();
+		p.sampleMemory(123456);
 		p.updates = 9;
 	}
 	std::ifstream input(path);
@@ -44,8 +44,10 @@ TEST_F(MemorySamples, PeriodicAndFinalWithoutPerformanceLog)
 #else
 		EXPECT_EQ(line.find("allocated_bytes"), std::string::npos);
 #endif
-		if (count == 1)
+		if (count == 1) {
 			EXPECT_NE(line.find("\"updates\":7"), std::string::npos);
+			EXPECT_NE(line.find("\"decoder_buffer_bytes\":123456"), std::string::npos);
+		}
 		if (count == 2)
 			EXPECT_NE(line.find("\"updates\":9"), std::string::npos);
 		count++;

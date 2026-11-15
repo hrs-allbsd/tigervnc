@@ -29,7 +29,12 @@ MemoryLog::~MemoryLog()
 	if (file)
 		fclose(file);
 }
-void MemoryLog::sample(uint64_t updates, uint64_t frames, bool force)
+bool MemoryLog::due() const
+{
+	return file && std::chrono::steady_clock::now() >= next;
+}
+void MemoryLog::sample(uint64_t updates, uint64_t frames, bool force,
+    uint64_t decoderBytes)
 {
 	if (!file)
 		return;
@@ -59,6 +64,7 @@ void MemoryLog::sample(uint64_t updates, uint64_t frames, bool force)
 		    "\"resident_bytes\":%zu,\"mapped_bytes\":%zu,"
 		    "\"retained_bytes\":%zu", values[0], values[1], values[2],
 		    values[3], values[4]);
-	fputs("}\n", file);
+	fprintf(file, ",\"decoder_buffer_bytes\":%llu}\n",
+	    (unsigned long long)decoderBytes);
 	fflush(file);
 }

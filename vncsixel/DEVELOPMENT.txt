@@ -606,3 +606,20 @@ Port revision 15 builds cleanly at nice 20 and passes check-plist,
 stage-qa and package generation.  Its staged viewer produces valid
 allocator samples during a private local input regression.  The source
 viewer also passes all 50 JPEG/fragmented-update xterm pixel comparisons.
+
+2026-11-15: Identify decoder pool high-water retention
+---------------------------------------------------
+MemoryLog now includes decoder_buffer_bytes.  DecodeManager counts the
+capacity of each free or queued rectangle stream under its queue lock.
+Only the protocol producer may query it, between decoding calls; workers
+read buffer contents but never change capacity.  The partial rectangle's
+buffer remains on the free list, so it must not be counted separately.
+The final sample reuses the last periodic total.  Disabled diagnostics
+perform no pool traversal or additional queue locking.
+
+A local fragmented-Raw fixture sends 49 updates over a 1024x768 framebuffer:
+16 large rectangles, 16 small, then 16 repeated large rectangles after the
+initial image.  Pool capacity reaches 33554432 bytes and stays identical
+through all three phases.  Live allocator bytes fluctuate slightly rather
+than growing over the repeated phase.  This demonstrates bounded retained
+capacity for this workload, not absence of leaks elsewhere.

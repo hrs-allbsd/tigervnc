@@ -11,7 +11,11 @@ class Performance {
 public:
 	Performance();
 	~Performance();
-	void sampleMemory() { memory.sample(updates, frames); }
+	bool memoryDue() const { return memory.due(); }
+	void sampleMemory(uint64_t bytes = 0) {
+		decoderBytes = bytes;
+		memory.sample(updates, frames, false, bytes);
+	}
 	uint64_t updates = 0, frames = 0, encodedBytes = 0, skipped = 0;
 	uint64_t regions = 0, fullFrames = 0, partialFrames = 0, encodedPixels = 0;
 	uint64_t cursorSamples = 0;
@@ -22,6 +26,7 @@ private:
 	FILE* file = nullptr;
 	std::chrono::steady_clock::time_point start;
 	double initialCpu = 0;
+	uint64_t decoderBytes = 0;
 	MemoryLog memory;
 };
 }

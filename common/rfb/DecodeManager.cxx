@@ -201,6 +201,19 @@ void DecodeManager::flush()
   throwThreadException();
 }
 
+size_t DecodeManager::bufferCapacity()
+{
+	const std::lock_guard<std::mutex> lock(queueMutex);
+	size_t bytes = 0;
+
+	// The partially filled buffer remains in freeBuffers until queued.
+	for (const auto* buffer : freeBuffers)
+		bytes += buffer->capacity();
+	for (const auto* entry : workQueue)
+		bytes += entry->bufferStream->capacity();
+	return bytes;
+}
+
 void DecodeManager::logStats()
 {
   size_t i;

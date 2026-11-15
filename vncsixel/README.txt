@@ -582,3 +582,22 @@ For real-server-perf.py or input-latency.py, add:
 Exclude startup and the final teardown sample from steady-state analysis.
 Short samples cannot prove absence of leaks; compare allocator samples
 with RSS and repeat under controlled workloads before changing allocation.
+
+Decoder buffer diagnostics
+--------------------------
+MemoryLog also records decoder_buffer_bytes: summed capacities of the
+TigerVNC rectangle staging pool, including queued, active and partially
+received rectangles.  It excludes the framebuffer, socket/decompressor
+buffers and frontend rendering storage.  Sample from the protocol producer
+thread between processMsg calls; a queue lock protects worker transitions.
+Partially filled buffers remain on the free list and are counted once.
+Startup is zero before the connection is available; the shutdown entry
+repeats the most recent sampled capacity.  Logging disabled incurs no pool
+traversal or additional queue lock.
+
+  python3 vncsixel/tests/decoder-memory.py /path/to/vncsixel \
+      --report /private/decoder-memory.json
+
+This private xterm regression cycles large, small and repeated large Raw
+updates through all pool buffers.  Capacities must plateau after warmup.
+It tests retention, not the absence of leaks in other components.

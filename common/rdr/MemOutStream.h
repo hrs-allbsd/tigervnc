@@ -41,6 +41,7 @@ namespace rdr {
     }
 
     size_t length() override { return ptr - start; }
+    size_t capacity() const { return end - start; }
     void clear() { ptr = start; };
     void clearAndZero() { memset(start, 0, ptr-start); clear(); }
     void reposition(size_t pos) { ptr = start + pos; }
