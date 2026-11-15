@@ -1018,3 +1018,37 @@ unchanged; no build/package/install/push is done for this test-only change.
 Next work includes an independent adaptive final-frame oracle, repeated
 paced trials and broader images before runtime tuning.  Multi-hour live
 memory stability and pjm integration also remain open.
+
+2026-11-15: Validate paced final pixels using fresh connections
+-------------------------------------------------------------
+Paced photo trials now first render the final shifted image in a fresh
+VNC connection and private xterm for each of the four palette modes.
+Those reference pixels remain in memory.  After the paced producer stops,
+the final screenshot must exactly match its reference before returning to
+the original photograph.  The fixed quantizer oracle remains an extra
+check.  Numeric reference viewer summaries are reported separately from
+paced totals.  This checks the update path against a static rendering;
+it is not an independent implementation of adaptive quantization.
+
+Earthrise, sixty shifts at 60 updates/second, MaxFPS=30: all four paced
+viewers receive 63 updates and render 33 frames.  Every final screenshot
+has zero changed pixels, zero RMSE and zero maximum channel difference
+against the separately connected reference.  Each of the four references
+renders exactly two frames (initial blue plus final shifted photograph).
+All paced modes also return exactly to their initial photograph.
+
+A temporary fault-injected fixture alters one channel of one reference
+pixel by one level.  It fails at the final comparison, reports exactly one
+changed pixel and maximum delta one, exits unsuccessfully and creates no
+success report.  The unmodified gradient fixture passes all four modes,
+including palette replacement, subtle changes, resize and skip checks.
+Records: earthrise-paced-oracle.json/.log, oracle-injected.log and
+oracle-gradient-regression.json/.log.  No public images or screenshots
+are added to Git or numeric reports; no real-server credentials are used.
+
+This closes the earlier missing adaptive final-frame comparison.  It does
+not observe intermediate paced terminal frames, perceived flicker or
+display latency.  Repeated trials and a broader public image corpus remain
+needed before runtime tuning.  Runtime and port revision 18 are unchanged;
+no build, packaging, installation or push is performed for this test-only
+change.  Multi-hour live memory stability and pjm support remain open.
