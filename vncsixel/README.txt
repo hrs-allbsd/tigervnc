@@ -789,8 +789,13 @@ lateness expose that backpressure.  No intermediate screenshots or quality
 measurements are taken in this mode; per-frame/temporal arrays cover only
 the measurements actually made and can be empty.  Final fixed-palette
 pixels are checked against the final source, then every mode must return
-exactly to its initial photograph.  Adaptive final observation checks a
-changed stable image, not an independent pixel oracle for that last frame.
+exactly to its initial photograph.  Before paced trials, every palette configuration renders the final shifted
+image in its own fresh connection/xterm.  The paced final screenshot must
+match that independent reference exactly, including adaptive palettes.
+Reference screenshots remain in memory; reference_runs retains only
+numeric viewer summaries and is excluded from paced viewer totals.  This
+checks update ordering and aggregation, not the correctness of the shared
+quantizer itself.  The fixed quantizer oracle remains an additional check.
 final_observed_seconds includes screenshot/stability polling overhead and
 is not terminal latency.  updates_minus_frames counts the viewer summary
 difference, not individually observed dropped terminal frames.  Viewer

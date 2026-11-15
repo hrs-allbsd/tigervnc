@@ -88,7 +88,18 @@ def difference(a, b):
 
 bgra = wire(rgb)
 results = {}
-for name, photo, colors in [('fixed',False,256),('photo',True,256),('fixed8',False,8),('photo8',True,8)]:
+references = {}
+base_rgb = rgb
+cases = [('fixed',False,256),('photo',True,256),('fixed8',False,8),('photo8',True,8)]
+runs = ([(name,photo,colors,True) for name,photo,colors in cases]
+    if args.pan_rate else [])
+runs += [(name,photo,colors,False) for name,photo,colors in cases]
+for name, photo, colors, reference_run in runs:
+    rgb = shift_pixels(base_rgb,args.pan_frames*17) if reference_run else base_rgb
+    bgra = wire(rgb)
+    pan_frames = 0 if reference_run else args.pan_frames
+    pan_rate = 0 if reference_run else args.pan_rate
+    return_image = False if reference_run else args.return_image
     server = fixture.Server()
     processes = []
     def wait_for(check,label):
@@ -157,14 +168,14 @@ for name, photo, colors in [('fixed',False,256),('photo',True,256),('fixed8',Fal
                 aligned_previous = original_display
                 temporal = []
                 pacing = None
-                if args.pan_rate:
+                if pan_rate:
                     # Conversion is outside the measured producer interval.
                     packets = [wire(shift_pixels(original,step*17))
-                        for step in range(1,args.pan_frames+1)]
+                        for step in range(1,pan_frames+1)]
                     queued = []
                     started = time.monotonic()
                     for index,packet in enumerate(packets):
-                        target = started+index/args.pan_rate
+                        target = started+index/pan_rate
                         time.sleep(max(0,target-time.monotonic()))
                         deadline = time.monotonic()+20
                         with server.condition:
@@ -175,21 +186,24 @@ for name, photo, colors in [('fixed',False,256),('photo',True,256),('fixed8',Fal
                                 server.condition.wait(.01)
                             server.update(0,0,w,h,packet)
                         queued.append(time.monotonic()-started)
-                    wait_for(lambda: server.sent >= 2+args.pan_frames,
+                    wait_for(lambda: server.sent >= 2+pan_frames,
                         'paced updates not sent')
                     image[1] = 0
                     wait_for(lambda: stable(lambda data: data != original_display),
                         'paced final image missing')
-                    final = shift_pixels(original,args.pan_frames*17)
+                    final = shift_pixels(original,pan_frames*17)
+                    reference_difference = difference(references[name]['pixels'],image[0])
+                    assert reference_difference['changed_pixels'] == 0, (name,reference_difference)
                     if not photo or colors == 8:
                         assert max(abs(a-b) for a,b in zip(image[0],fixed_pixels(final,colors))) <= 1
-                    pacing = {'requested_hz':args.pan_rate,
+                    pacing = {'requested_hz':pan_rate,
                         'queued_seconds':queued,
-                        'max_schedule_lateness_ms':1000*max(t-i/args.pan_rate
+                        'max_schedule_lateness_ms':1000*max(t-i/pan_rate
                             for i,t in enumerate(queued)),
                         'final_observed_seconds':time.monotonic()-started,
-                        'observation':'final frame only; screenshot/stability overhead included'}
-                for step in range(1,0 if args.pan_rate else args.pan_frames+1):
+                        'reference_difference':reference_difference,
+                        'observation':'final frame matches a separate fresh connection; polling overhead included'}
+                for step in range(1,0 if pan_rate else pan_frames+1):
                     rgb = shift_pixels(original,step*17)
                     previous = image[0]
                     image[1] = 0
@@ -204,11 +218,11 @@ for name, photo, colors in [('fixed',False,256),('photo',True,256),('fixed8',Fal
                     aligned_previous = aligned
                 rgb = original
                 returned = None
-                if args.return_image:
+                if return_image:
                     previous = image[0]
                     image[1] = 0
                     server.update(0,0,w,h,bgra)
-                    wait_for(lambda: server.sent >= 3+args.pan_frames, 'return update not sent')
+                    wait_for(lambda: server.sent >= 3+pan_frames, 'return update not sent')
                     wait_for(lambda: stable(lambda data: data == original_display),
                         'original image did not return')
                     returned = difference(original_display,image[0])
@@ -217,12 +231,15 @@ for name, photo, colors in [('fixed',False,256),('photo',True,256),('fixed8',Fal
                 terminal.wait(timeout=10)
                 assert statusfile.read_text().strip() == '0', 'viewer exited unsuccessfully'
                 metrics = json.loads(perf.read_text())
-                assert metrics['updates'] == 2+args.pan_frames+int(args.return_image), metrics
-                if args.pan_rate:
+                assert metrics['updates'] == 2+pan_frames+int(return_image), metrics
+                if pan_rate:
                     assert 3 <= metrics['frames'] <= metrics['updates'], metrics
                     pacing['updates_minus_frames'] = metrics['updates']-metrics['frames']
                 else:
-                    assert metrics['frames'] == 2+args.pan_frames+int(args.return_image), metrics
+                    assert metrics['frames'] == 2+pan_frames+int(return_image), metrics
+                if reference_run:
+                    references[name] = {'pixels':original_display,'viewer':metrics}
+                    continue
                 results[name] = {'rmse_rgb':error,'frame_rmse_rgb':errors,
                     'aligned_frame_differences':temporal,'return_difference':returned,
                     'pacing':pacing,
@@ -290,7 +307,8 @@ if args.image:
 args.report.parent.mkdir(parents=True,exist_ok=True)
 args.report.write_text(json.dumps({'scope':('external-image xterm quality; viewer totals include initial blue frame plus test image and optional cyclic shifts'
     if args.image else 'generated gradient xterm quality; viewer totals include palette/resize regressions'),
-    'fixture':metadata,'results':results},indent=2)+'\n')
+    'fixture':metadata,'results':results,
+    'reference_runs':{name:{'viewer':item['viewer']} for name,item in references.items()}},indent=2)+'\n')
 print('PASS: external image rendered in four palette configurations' if args.image else
     'PASS: adaptive quality, palette replacement, subtle changes, resize, unchanged skip, full frames, eight-color fallback')
 for name, value in results.items():
