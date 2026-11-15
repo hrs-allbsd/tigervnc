@@ -8,11 +8,13 @@ import time
 
 
 class Server:
-    def __init__(self, width=599, height=431, on_key=None, textured=False, cursor=False, server_format=None):
+    def __init__(self, width=599, height=431, on_key=None, textured=False, cursor=False, server_format=None, fragment_updates=False):
         self.width, self.height = width, height
         self.on_key = on_key
         self.cursor = cursor
         self.server_format = server_format or (32, 24, 0, 1, 255, 255, 255, 16, 8, 0)
+        self.fragment_updates = fragment_updates
+        self.update_writes = 0
         self.client_format = None
         self.encodings = set()
         self.key_events = []
@@ -57,6 +59,21 @@ class Server:
             self.pending = rectangles
             self.condition.notify_all()
 
+    def send_update(self, packet):
+        # Delay only a bounded prefix: even a large initial Raw frame stays fast.
+        # TCP may coalesce writes; no test relies on recv() message boundaries.
+        offset = 0
+        if self.fragment_updates:
+            for length in (1, 2, 3, 5, 8, 13, 21, 34, 41):
+                if offset >= len(packet): break
+                self.conn.sendall(packet[offset:offset+length])
+                self.update_writes += 1
+                offset += length
+                time.sleep(.002)
+        if offset < len(packet):
+            self.conn.sendall(packet[offset:])
+            self.update_writes += 1
+
     def run(self):
         try:
             self.conn, _ = self.listener.accept()
@@ -89,7 +106,7 @@ class Server:
                         packet = struct.pack('!BBH', 0, 0, len(self.pending) + bool(cursor)) + cursor
                         for x, y, w, h, encoding, data in self.pending:
                             packet += struct.pack('!HHHHi', x, y, w, h, encoding) + data
-                        conn.sendall(packet)
+                        self.send_update(packet)
                         self.pending = None
                         self.requested = False
                         self.sent += 1

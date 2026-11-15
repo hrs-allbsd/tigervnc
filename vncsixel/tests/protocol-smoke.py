@@ -18,13 +18,15 @@ parser.add_argument('viewer', type=Path)
 parser.add_argument('--report', required=True, type=Path)
 parser.add_argument('--server-format', choices=['rgb888', 'rgb565', 'big-endian'], default='rgb888',
     help='ServerInit format; viewer still negotiates RGB888 update pixels')
+parser.add_argument('--fragment-updates', action='store_true',
+    help='Send a bounded update prefix in small, delayed writes')
 parser.add_argument('--colors', type=int, choices=[8, 256], default=256)
 args = parser.parse_args()
 spec = importlib.util.spec_from_file_location('fixture', Path(__file__).with_name('rfb-fixture.py'))
 fixture = importlib.util.module_from_spec(spec); spec.loader.exec_module(fixture)
 formats = {'rgb888': None, 'rgb565': (16, 16, 0, 1, 31, 63, 31, 11, 5, 0),
            'big-endian': (32, 24, 1, 1, 255, 255, 255, 0, 8, 16)}
-server = fixture.Server(server_format=formats[args.server_format])
+server = fixture.Server(server_format=formats[args.server_format], fragment_updates=args.fragment_updates)
 processes, checks = [], []
 width, height = 599, 431
 pixels = bytearray(b'\xff\xff\xff' * width * height)
@@ -239,7 +241,9 @@ with tempfile.TemporaryDirectory() as directory, open(os.devnull, 'wb') as null:
             update('resize preserving pixels ' + str((nw,nh)), [(0,0,nw,nh,encoding,payload)])
             update('resize repaint lower right', [raw(nw-7,nh-5,7,5,b'\xff\0\xff')])
         os.kill(int(pidfile.read_text()), signal.SIGTERM); terminal.wait(timeout=10)
-        result = {'checks': checks, 'server_format': args.server_format, 'colors': args.colors,
+        if args.fragment_updates: assert server.update_writes > server.sent
+        result = {'fragment_updates': args.fragment_updates, 'update_writes': server.update_writes,
+                  'checks': checks, 'server_format': args.server_format, 'colors': args.colors,
                   'negotiated_format': server.client_format or server.server_format,
                   'viewer': json.loads(perf.read_text()), 'scope': 'independent RGB model vs actual xterm pixels'}
         args.report.parent.mkdir(parents=True, exist_ok=True)

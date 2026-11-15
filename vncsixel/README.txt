@@ -270,12 +270,30 @@ RFB interoperability regression
 
 The private fixture compares actual xterm pixels with an independent RGB
 model, including the area outside a resized image.  Cases cover Raw,
-Hextile raw tiles, ZRLE solid tiles, non-overlapping and overlapping
-CopyRect, RichCursor masks/hotspots, XCursor, opaque CursorWithAlpha,
+Hextile inherited colors/subrectangles and partial tiles, ZRLE raw/solid,
+packed palettes with row padding, plain/palette RLE and shared zlib history,
+non-overlapping and overlapping CopyRect, RichCursor masks/hotspots,
+XCursor, opaque CursorWithAlpha,
 server cursor position, clipping, empty cursors, DesktopSize and
 ExtendedDesktopSize.  Add --colors 8 for the eight-color renderer.
 --server-format rgb565 or big-endian checks negotiation of the client's
 requested 32-bit wire format; it does not force 16-bit decoding.
+
+Add --fragment-updates to send the first 128 bytes of each update in
+small writes with short delays.  Large payloads remain bounded in cost.
+TCP may coalesce writes; packet or recv() boundaries are not assumed.
+Reports include the negotiated format and update write count.
+
+Run all 12 combinations (three ServerInit formats, 8/256 colors,
+normal/fragmented updates), each with 28 pixel comparisons:
+
+  python3 vncsixel/tests/protocol-matrix.py /path/to/vncsixel \
+      --report-dir /private/protocol-matrix --jobs 2
+
+The runner uses at most three parallel private Xvfb/xterm instances.
+It leaves per-case logs/JSON and writes summary.json only after every
+case succeeds.  Reports contain fixture data and numeric measurements;
+no live connection, credentials or screenshots are used.
 
 Escape key timing
 =================

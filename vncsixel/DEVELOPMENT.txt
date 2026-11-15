@@ -108,8 +108,9 @@ Verification
 
 Remaining work, in order
 ------------------------
-1. Remote application/WAN input latency and long-duration tests; broader encoding/pixel-format and
-   cursor/CopyRect/server-resize coverage.
+1. Remote application/WAN input latency and long-duration tests; Tight/JPEG,
+   semitransparent cursors and broader server interoperability.  Hextile/ZRLE,
+   CopyRect and resize now have a 12-configuration pixel comparison matrix.
 2. Representative photograph/video workloads and further tuning of the
    sparse-region compression estimate; PhotoPalette is now available.
 3. Broader TLS/certificate and third-party RSA-AES interoperability; the
@@ -430,3 +431,22 @@ cursor and resize regressions.  No production drawing change was needed.
 The server-format option changes only ServerInit: vncsixel negotiates
 RGB888 update pixels.  These are not 16-bit or big-endian decoder tests;
 the report now explicitly records the negotiated pixel format.
+
+2026-11-15: Fragmented updates and protocol matrix
+-------------------------------------------------
+The fixture can send each update prefix in small delayed writes, bounded
+to 128 bytes so large Raw frames remain practical.  TCP coalescing is
+allowed; receive-call boundaries are never assumed.  The protocol report
+records the transport mode, write count and negotiated pixel format.
+protocol-matrix.py runs all three ServerInit formats with 8/256 colors
+and normal/fragmented updates, using bounded parallel private displays.
+It removes stale success summaries before a rerun and writes a new
+summary only after every configuration succeeds.
+
+All 12 configurations pass 28 independent xterm pixel comparisons each
+(336 comparisons).  The existing port revision 12 staged viewer also
+passes the expanded 28-case fragmented-update test.  Authentication and
+production code are unchanged, so no new package revision is required.
+Only generated fixture data and numeric results are recorded.  No live
+server input, credentials or screenshots were used.  This is encoding
+correctness coverage, not a WAN benchmark or a 16-bit decoder matrix.
