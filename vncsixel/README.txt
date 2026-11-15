@@ -735,3 +735,24 @@ true/false commands instead of the viewer to verify that both successful
 and unsuccessful premature child exits fail startup and remove stale
 success data.  Neither tool diagnoses the original intermittent failure
 by itself; use the captured diagnostics when it next occurs.
+
+Photographic palette comparison
+------------------------------
+tests/photo-palette.py VIEWER --image PUBLIC_IMAGE --report REPORT.json
+runs a local image through four palette configurations in private xterms.
+ImageMagick converts it to sRGB and stretches it to 599x431.  The report
+retains source/RGB SHA256 hashes and numeric errors, not screenshots.
+Viewer totals cover the initial blue frame and the photograph (two frames);
+they are not isolated single-frame timings.  No quality winner is required
+for arbitrary images.  Without --image, the original generated-gradient
+quality and palette/resize regressions remain enabled.
+
+Example fixture: Earthrise, Apollo 8, William Anders; source NASA.
+Image page: https://science.nasa.gov/resource/image-earthrise/
+Usage: https://www.nasa.gov/nasa-brand-center/images-and-media/
+The NASA-credited image is used for factual technical measurement, without
+implying endorsement.  The image is cached outside the source tree.
+Download URL:
+https://assets.science.nasa.gov/dynamicimage/assets/science/esd/climate/2023/12/August-2013_1920x1200.jpg?fit=clip&w=1900
+Downloaded JPEG: 1900x1188, 85972 bytes; SHA256:
+879037687618108a27817dee42fbe014323614f93667c7dc4e8684328db91dca
