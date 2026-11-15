@@ -623,3 +623,25 @@ initial image.  Pool capacity reaches 33554432 bytes and stays identical
 through all three phases.  Live allocator bytes fluctuate slightly rather
 than growing over the repeated phase.  This demonstrates bounded retained
 capacity for this workload, not absence of leaks elsewhere.
+
+A concurrent 180.078-second real-server shared/ViewOnly run completes
+5007 updates and 1044 frames.  Pool capacity rises from 25212928 bytes at
+five seconds to 27787264 bytes by 35 seconds, then remains unchanged
+through the final periodic sample at 175 seconds.  Over 35..175 seconds,
+allocated bytes range 130493888..130694464 and end 93664 bytes lower.
+Process RSS rises from 149632 to 151200 KiB over the sampled run.
+
+This identifies bounded pool retention in the current workload; it does
+not establish the cause of every allocation in the earlier run, whose
+server activity differed.  No allocation policy is changed on this basis.
+Repeatable compressed-rectangle high-water workloads and multi-hour
+observations remain open.  Records are decoder-local.json,
+decoder-real.json{,l}, decoder-memory-summary.json and decoder-protocol/
+in the project records directory.  Remote inputs and screenshots remain
+excluded; only numeric diagnostics are retained.
+
+Validation: 46 frontend C++ tests and 273 upstream unit tests pass.
+The 12-configuration JPEG/fragmented-update matrix passes all 600 xterm
+pixel comparisons.  Port revision 16 builds at nice 20 and passes
+check-plist, stage-qa and package generation.  Its staged binary also
+passes the 49-update decoder-capacity regression.
