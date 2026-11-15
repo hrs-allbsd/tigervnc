@@ -7,10 +7,13 @@
 namespace sixelvnc {
 /* Composite straight RGBA after nearest-neighbor framebuffer sampling. */
 inline uint64_t compositeCursor(uint8_t* rgb, int dw, int dh, int rw, int rh,
-    const uint8_t* rgba, int cw, int ch, int hx, int hy, int px, int py)
+    const uint8_t* rgba, int cw, int ch, int hx, int hy, int px, int py,
+    int vx = 0, int vy = 0, int vw = 0, int vh = 0)
 {
 	if (dw <= 0 || dh <= 0 || rw <= 0 || rh <= 0 || cw <= 0 || ch <= 0)
 		return 0;
+	if (!vw) vw = dw;
+	if (!vh) vh = dh;
 	int64_t ox = int64_t(px) - hx, oy = int64_t(py) - hy;
 	int64_t left = std::max<int64_t>(0, ox);
 	int64_t top = std::max<int64_t>(0, oy);
@@ -18,15 +21,19 @@ inline uint64_t compositeCursor(uint8_t* rgb, int dw, int dh, int rw, int rh,
 	int64_t bottom = std::min<int64_t>(rh, oy + ch);
 	if (left >= right || top >= bottom)
 		return 0;
-	/* Invert source sampling floor(x * rw / dw) with ceiling bounds. */
-	int x0 = (left * dw + rw - 1) / rw;
-	int y0 = (top * dh + rh - 1) / rh;
-	int x1 = (right * dw + rw - 1) / rw;
-	int y1 = (bottom * dh + rh - 1) / rh;
+	/* Invert source sampling floor((x + vx) * rw / vw) with ceiling bounds. */
+	int x0 = std::max<int64_t>(0, std::min<int64_t>(dw,
+	    (left * vw + rw - 1) / rw - vx));
+	int y0 = std::max<int64_t>(0, std::min<int64_t>(dh,
+	    (top * vh + rh - 1) / rh - vy));
+	int x1 = std::max<int64_t>(0, std::min<int64_t>(dw,
+	    (right * vw + rw - 1) / rw - vx));
+	int y1 = std::max<int64_t>(0, std::min<int64_t>(dh,
+	    (bottom * vh + rh - 1) / rh - vy));
 	for (int y = y0; y < y1; y++) {
-		int64_t cy = int64_t(y) * rh / dh - oy;
+		int64_t cy = int64_t(y + vy) * rh / vh - oy;
 		for (int x = x0; x < x1; x++) {
-			int64_t cx = int64_t(x) * rw / dw - ox;
+			int64_t cx = int64_t(x + vx) * rw / vw - ox;
 			const uint8_t* fg = rgba + (cy * cw + cx) * 4;
 			if (!fg[3])
 				continue;

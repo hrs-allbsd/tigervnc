@@ -7,8 +7,10 @@
 
 /* Full-image reference intentionally does not compute a clipped cursor box. */
 static void compare(int rw, int rh, int dw, int dh, int px, int py,
-    int hx, int hy)
+    int hx, int hy, int vx = 0, int vy = 0, int vw = 0, int vh = 0)
 {
+	if (!vw) vw = dw;
+	if (!vh) vh = dh;
 	constexpr int cw = 15, ch = 11;
 	std::vector<uint8_t> cursor(cw * ch * 4);
 	std::vector<uint8_t> actual(dw * dh * 3 + 32, 0xa5);
@@ -20,8 +22,8 @@ static void compare(int rw, int rh, int dw, int dh, int px, int py,
 	uint64_t samples = 0;
 	for (int y = 0; y < dh; y++) {
 		for (int x = 0; x < dw; x++) {
-			int64_t cx = int64_t(x) * rw / dw - int64_t(px) + hx;
-			int64_t cy = int64_t(y) * rh / dh - int64_t(py) + hy;
+			int64_t cx = int64_t(x + vx) * rw / vw - int64_t(px) + hx;
+			int64_t cy = int64_t(y + vy) * rh / vh - int64_t(py) + hy;
 			if (cx < 0 || cy < 0 || cx >= cw || cy >= ch)
 				continue;
 			samples++;
@@ -33,7 +35,7 @@ static void compare(int rw, int rh, int dw, int dh, int px, int py,
 		}
 	}
 	EXPECT_EQ(samples, sixelvnc::compositeCursor(actual.data() + 16,
-	    dw, dh, rw, rh, cursor.data(), cw, ch, hx, hy, px, py));
+	    dw, dh, rw, rh, cursor.data(), cw, ch, hx, hy, px, py, vx, vy, vw, vh));
 	EXPECT_TRUE(actual == expected); /* Includes both buffer guards. */
 }
 
@@ -77,4 +79,14 @@ TEST(Cursor, SmallShapeLimitsWork)
 	std::vector<uint8_t> rgb(846 * 774 * 3), cursor(15 * 11 * 4, 255);
 	EXPECT_EQ(165U, sixelvnc::compositeCursor(rgb.data(), 846, 774,
 	    846, 774, cursor.data(), 15, 11, 7, 5, 400, 300));
+}
+
+TEST(Cursor, ViewportCropAndMagnificationMatchFullScan)
+{
+	for (int scale : {1, 2, 4})
+		for (int vx : {0, 25, 70})
+			for (int vy : {0, 17, 40})
+				for (int px : {-10, 0, 35, 90, 110})
+					compare(101, 73, 29, 23, px, 35, 7, 5,
+					    vx, vy, 101 * scale, 73 * scale);
 }
