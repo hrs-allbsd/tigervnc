@@ -766,3 +766,14 @@ without PhotoPalette.  Totals include the initial blue frame, the original
 image and each shift.  This waits for each frame and is not a video FPS or
 maximum-throughput benchmark.  Uniform/periodic images that do not visibly
 change at a step are unsuitable inputs and time out explicitly.
+
+Pan reports also undo each cyclic shift on the displayed RGB pixels before
+comparing successive frames.  aligned_frame_differences contains numeric
+RMSE, maximum channel delta and changed-pixel count for the same source
+pixels.  Fixed palettes must remain identical after alignment.  Adaptive
+variation measures spatial-position-dependent quantization, not perceived
+flicker: no timing, human evaluation or display persistence is modeled.
+--return-image requires a nonzero pan count and sends the original image
+again.  Its displayed pixels must exactly match the first presentation,
+checking for palette history or stale output.  This adds one frame/update
+to the viewer totals.  No photographs or screenshots enter the report.

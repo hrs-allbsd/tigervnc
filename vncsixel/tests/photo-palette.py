@@ -24,7 +24,11 @@ parser.add_argument('--report', type=Path, required=True)
 parser.add_argument('--image', type=Path, help='Local public test image; never a private server capture')
 parser.add_argument('--pan-frames', type=int, default=0,
     help='Additional cyclic horizontal shifts, 0..60; requires --image')
+parser.add_argument('--return-image', action='store_true',
+    help='Return to the original image after panning and compare pixels')
 args = parser.parse_args()
+if args.return_image and (not args.image or not args.pan_frames):
+    parser.error('--return-image requires --image and nonzero --pan-frames')
 if not 0 <= args.pan_frames <= 60 or (args.pan_frames and not args.image):
     parser.error('--pan-frames must be 0..60 and requires --image')
 args.report.unlink(missing_ok=True)
@@ -64,6 +68,19 @@ def fixed_pixels(pixels, colors):
     for channel in range(3):
         output[channel::3] = pixels[channel::3].translate(tables[channel])
     return bytes(output)
+
+def shift_pixels(pixels, offset):
+    offset = (offset % w)*3
+    return b''.join(pixels[row*w*3+offset:(row+1)*w*3] +
+        pixels[row*w*3:row*w*3+offset] for row in range(h))
+
+def difference(a, b):
+    assert len(a) == len(b) and len(a) % 3 == 0
+    squares = sum((x-y)**2 for x,y in zip(a,b))
+    return {'rmse_rgb': math.sqrt(squares/len(a)),
+        'max_channel_delta': max(abs(x-y) for x,y in zip(a,b)),
+        'changed_pixels': sum(a[i:i+3] != b[i:i+3]
+            for i in range(0,len(a),3))}
 
 bgra = wire(rgb)
 results = {}
@@ -132,10 +149,11 @@ for name, photo, colors in [('fixed',False,256),('photo',True,256),('fixed8',Fal
                     assert max(abs(a-b) for a,b in zip(image[0],fixed_pixels(rgb,colors))) <= 1, 'Fixed image pixel mismatch'
                 errors = [error]
                 original = rgb
+                original_display = image[0]
+                aligned_previous = original_display
+                temporal = []
                 for step in range(1,args.pan_frames+1):
-                    offset = (step*17 % w)*3
-                    rgb = b''.join(original[row*w*3+offset:(row+1)*w*3] +
-                        original[row*w*3:row*w*3+offset] for row in range(h))
+                    rgb = shift_pixels(original,step*17)
                     previous = image[0]
                     image[1] = 0
                     server.update(0,0,w,h,wire(rgb))
@@ -144,14 +162,27 @@ for name, photo, colors in [('fixed',False,256),('photo',True,256),('fixed8',Fal
                     if not photo or colors == 8:
                         assert max(abs(a-b) for a,b in zip(image[0],fixed_pixels(rgb,colors))) <= 1, 'Fixed pan pixel mismatch'
                     errors.append(rmse(image[0]))
+                    aligned = shift_pixels(image[0],-step*17)
+                    temporal.append(difference(aligned_previous,aligned))
+                    aligned_previous = aligned
                 rgb = original
+                returned = None
+                if args.return_image:
+                    previous = image[0]
+                    image[1] = 0
+                    server.update(0,0,w,h,bgra)
+                    wait_for(lambda: stable(lambda data: data != previous),
+                        'original image did not return')
+                    returned = difference(original_display,image[0])
+                    assert returned['changed_pixels'] == 0, returned
                 os.kill(int(pidfile.read_text()),signal.SIGTERM)
                 terminal.wait(timeout=10)
                 assert statusfile.read_text().strip() == '0', 'viewer exited unsuccessfully'
                 metrics = json.loads(perf.read_text())
-                assert metrics['updates'] == 2+args.pan_frames, metrics
-                assert metrics['frames'] == 2+args.pan_frames, metrics
+                assert metrics['updates'] == 2+args.pan_frames+int(args.return_image), metrics
+                assert metrics['frames'] == 2+args.pan_frames+int(args.return_image), metrics
                 results[name] = {'rmse_rgb':error,'frame_rmse_rgb':errors,
+                    'aligned_frame_differences':temporal,'return_difference':returned,
                     'psnr_db':20*math.log10(255/error) if error else None,
                     'viewer':metrics}
                 continue
@@ -205,6 +236,10 @@ if not args.image:
 assert results['photo8']['rmse_rgb'] == results['fixed8']['rmse_rgb']
 if args.image:
     assert results['photo8']['frame_rmse_rgb'] == results['fixed8']['frame_rmse_rgb']
+    for name in ('fixed','fixed8','photo8'):
+        assert all(item['changed_pixels'] == 0 for item in
+            results[name]['aligned_frame_differences']), results[name]
+    metadata['return_image'] = args.return_image
     metadata['pan_frames'] = args.pan_frames
     metadata['pan_step_pixels'] = 17
     metadata['pacing'] = 'wait for changed stable xterm pixels after every frame; not video FPS'
