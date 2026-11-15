@@ -601,3 +601,24 @@ traversal or additional queue lock.
 This private xterm regression cycles large, small and repeated large Raw
 updates through all pool buffers.  Capacities must plateau after warmup.
 It tests retention, not the absence of leaks in other components.
+
+Compressed decoder retention matrix
+-----------------------------------
+decoder-memory.py accepts --encoding raw|tight|zrle and --content
+solid|noise.  --repeat-cycles 1..100 (default 3) repeats the large-update
+phase after one large and one small phase.  Each phase has 16 updates;
+including the initial image, the default run processes 81 updates.
+Tight rotates through all four persistent streams; --reset-streams resets
+all streams before each rectangle.  The initial image uses the selected
+encoding too, avoiding an unrelated Raw buffer high-water mark.
+
+  python3 vncsixel/tests/decoder-memory-matrix.py /path/to/vncsixel \
+      --report-dir /private/compressed-memory
+
+The runner executes seven cases serially: Raw/Tight/ZRLE with solid and
+fixed-seed noise data, plus Tight noise with stream resets.  All update
+prefixes are fragmented.  It checks plateaued staging capacity and an
+upper bound derived from the largest wire payload and the pool's maximum
+eight buffers.  JSON reports retain allocator samples when available.
+These are capacity tests, not pixel comparisons or general leak tests;
+the separate protocol matrix performs xterm pixel comparisons.

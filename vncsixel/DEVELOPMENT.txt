@@ -645,3 +645,22 @@ The 12-configuration JPEG/fragmented-update matrix passes all 600 xterm
 pixel comparisons.  Port revision 16 builds at nice 20 and passes
 check-plist, stage-qa and package generation.  Its staged binary also
 passes the 49-update decoder-capacity regression.
+
+2026-11-15: Compressed rectangle retention regressions
+----------------------------------------------------
+The local decoder-capacity fixture now sends Raw, Tight copy-filter and
+ZRLE raw-tile rectangles, with solid or fixed-seed noise pixels.  The
+selected encoding is used from the initial image onward.  Tight rotates
+through four persistent zlib streams; a separate mode resets all streams
+for every rectangle.  ZRLE maintains one ordered zlib stream.  Wire pixel
+layouts follow common/rfb/TightDecoder.cxx and ZRLEDecoder.cxx.
+
+Each phase sends 16 fragmented-prefix updates.  After large and small
+phases, three repeated large phases bring the default total to 81 updates.
+All phases must retain exactly the warm pool capacity, within a bound
+based on the maximum encoded payload and eight possible staging buffers.
+The serial matrix runs seven encoding/content/reset combinations and
+preserves per-case allocator samples.  It removes stale summaries before
+running and produces a summary only when every subprocess succeeds.
+Runtime allocation policy is unchanged.  The tests measure retained
+staging capacity, not pixel correctness or general allocation leak freedom.
