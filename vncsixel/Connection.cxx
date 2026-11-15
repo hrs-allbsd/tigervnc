@@ -4,6 +4,15 @@
 #include "Palette.h"
 #include "Damage.h"
 #include "Help.h"
+#include "TrustStore.h"
+#include <core/xdgdirs.h>
+#ifdef HAVE_CONFIG_H
+#include <config.h>
+#endif
+#ifdef HAVE_NETTLE
+#include <nettle/sha2.h>
+#include <nettle/version.h>
+#endif
 #include <rfb/PixelBuffer.h>
 #include <rfb/obfuscate.h>
 #include <core/Configuration.h>
@@ -14,6 +23,8 @@
 #include <rdr/FdOutStream.h>
 #include <sixel.h>
 #include <algorithm>
+#include <cerrno>
+#include <sys/stat.h>
 #include <cmath>
 #include <chrono>
 #include <cstdio>
@@ -25,6 +36,9 @@
 using namespace sixelvnc;
 
 namespace {
+core::StringParameter knownHosts("KnownHosts", "RSA-AES known-hosts file", "");
+core::BoolParameter strictHostKeyChecking("StrictHostKeyChecking",
+    "Reject unknown RSA-AES host keys without prompting", false);
 core::IntParameter pasteRate("PasteRate",
     "Maximum pasted characters per second", 200, 1, 10000);
 core::StringParameter passwordFile("PasswordFile",
@@ -44,6 +58,7 @@ Connection::Connection(const char* name, Terminal& term) :
 	std::string host;
 	int port;
 	network::getHostAndPort(name, &host, &port);
+	trustEndpoint = "[" + host + "]:" + std::to_string(port);
 	socket.reset(new network::TcpSocket(host.c_str(), port));
 	setServerName(host.c_str());
 	setStreams(&socket->inStream(), &socket->outStream());
@@ -156,11 +171,66 @@ bool Connection::verifyCertificate(unsigned status, const uint8_t*, size_t)
 {
 	return status == 0;
 }
-bool Connection::verifyHostKey(const uint8_t*, size_t, const char*)
+bool Connection::verifyHostKey(const uint8_t* key, size_t length, const char*)
 {
-	/* No trust store yet. Never silently accept an unknown host key. */
+#ifndef HAVE_NETTLE
+	(void)key; (void)length;
 	return false;
+#else
+	std::string path = static_cast<const char*>(knownHosts);
+	bool defaultPath = path.empty();
+	if (defaultPath) {
+		const char* directory = core::getvncdatadir();
+		if (!directory) throw std::runtime_error("Cannot determine RSA known-hosts directory");
+		path = std::string(directory) + "/vncsixel_rsa_known_hosts";
+	}
+	TrustStore store(path);
+	std::string value(reinterpret_cast<const char*>(key), length);
+	auto state = store.check(trustEndpoint, value);
+	if (state == TrustStore::Match) return true;
+	if (state == TrustStore::Changed)
+		throw std::runtime_error("RSA host key changed; connection rejected (check KnownHosts)");
+	if (strictHostKeyChecking) return false;
+	uint8_t digest[SHA256_DIGEST_SIZE];
+	sha256_ctx context;
+	sha256_init(&context);
+	sha256_update(&context, length, key);
+#if NETTLE_VERSION_MAJOR >= 4
+	sha256_digest(&context, digest);
+#else
+	sha256_digest(&context, sizeof(digest), digest);
+#endif
+	std::string fingerprint = TrustStore::hex(digest, sizeof(digest));
+	std::string endpoint = trustEndpoint;
+	for (char& c : endpoint) if (c < 32 || c > 126) c = '?';
+	std::unique_ptr<FILE, decltype(&fclose)> tty(fopen("/dev/tty", "r+"), fclose);
+	if (!tty) return false;
+	if (fprintf(tty.get(), "Unknown RSA-AES host: %s\nSHA256:%s\n"
+	    "Verify the fingerprint through a trusted channel.\n"
+	    "Type yes to save, once for this connection, or no [no]: ",
+	    endpoint.c_str(), fingerprint.c_str()) < 0 || fflush(tty.get()) == EOF)
+		return false;
+	std::string answer;
+	int c;
+	while ((c = fgetc(tty.get())) != '\n') {
+		if (c == EOF || answer.size() >= 16) return false;
+		answer += static_cast<char>(c);
+	}
+	if (answer == "once") return true;
+	if (answer != "yes") return false;
+	if (defaultPath) {
+		std::string directory = path.substr(0, path.find_last_of('/'));
+		if (core::mkdir_p(directory.c_str(), 0700) < 0 && errno != EEXIST)
+			throw std::runtime_error("Cannot create RSA known-hosts directory");
+		struct stat st;
+		if (stat(directory.c_str(), &st) < 0 || !S_ISDIR(st.st_mode))
+			throw std::runtime_error("Invalid RSA known-hosts directory");
+	}
+	store.remember(trustEndpoint, value);
+	return true;
+#endif
 }
+
 namespace {
 struct Encoded {
 	std::string bytes;

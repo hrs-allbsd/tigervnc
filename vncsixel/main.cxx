@@ -33,6 +33,7 @@ int main(int argc, char** argv)
 		puts("Usage: vncsixel [options] host[:display] | --terminal-check\n"
 		    "-PasswordFile file (alias -passwd): vncpasswd-format file.\n"
 		    "VNC_USERNAME and VNC_PASSWORD: same environment as vncviewer.\n"
+		    "-KnownHosts file: RSA-AES keys; -StrictHostKeyChecking: reject unknown.\n"
 		    "-ViewOnly: suppress remote input; -Shared=0: exclusive session.\n"
 		    "-CellSize WxH, -PixelSize WxH: override terminal geometry.\n"
 		    "-SingleRect: use one bounding rectangle instead of sparse regions.\n"

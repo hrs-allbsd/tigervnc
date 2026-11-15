@@ -40,6 +40,7 @@ private:
 	void getUserPasswd(std::string*, std::string*) override;
 	bool verifyCertificate(unsigned, const uint8_t*, size_t) override;
 	bool verifyHostKey(const uint8_t*, size_t, const char*) override;
+	std::string trustEndpoint;
 	KeyQueue keys;
 	bool discardPaste = false, receivingPaste = false;
 	std::string inputNotice;
