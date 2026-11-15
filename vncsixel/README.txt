@@ -800,3 +800,15 @@ final_observed_seconds includes screenshot/stability polling overhead and
 is not terminal latency.  updates_minus_frames counts the viewer summary
 difference, not individually observed dropped terminal frames.  Viewer
 MaxFPS remains 30; this tests aggregation, not maximum terminal throughput.
+
+Long real-server observations
+-----------------------------
+real-server-perf.py accepts --rss-log PATH and --memory-log PATH to flush
+numeric process RSS and viewer allocator/decoder samples during the run.
+The final --report remains a separate completed-run summary.  Shared and
+ViewOnly are enforced after extra viewer options; actual child exit status
+must be zero.  Output paths must differ from each other and the viewer and
+credential input paths.  Interrupted JSONL is partial evidence, not a
+completed test or proof of stability.  No screenshots or remote input are
+used.  Choose --seconds 7200 (or longer) for a separate multi-hour run;
+a 120-second capture validation is not a substitute.

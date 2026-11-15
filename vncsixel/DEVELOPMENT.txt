@@ -106,24 +106,33 @@ Verification
 - Terminal build explicitly disables X11 discovery and links no Xlib/FLTK.
 - Port builds at nice 20 and passes check-plist and stage-qa.
 
-Remaining work, in order
-------------------------
-1. Real WAN/remote-application input latency and multi-hour runs;
-   investigate the real-server RSS increase after the initial warmup.
-   Mixed Raw/Tight/ZRLE plus palette/gradient/JPEG retention traces are
-   now covered locally; multi-hour real-server stability remains open.
-   Broader server interoperability and representative cursor workloads.
-   Semitransparent cursors, Tight/JPEG,
-   Hextile/ZRLE, CopyRect and resize have a 12-configuration pixel matrix.
-2. Representative photograph/video workloads and further tuning of the
-   sparse-region compression estimate; PhotoPalette is now available.
-3. Broader TLS/certificate and third-party RSA-AES interoperability; the
-   RSA host-key trust store and local interoperability are implemented.
-4. Publish reviewed source commits, then replace port backports with a
-   newer pinned GitHub source commit; clean poudriere jail validation.
-5. pjm native Git/CMake support and safe import of the existing clone.
-   The pjm checkout has unrelated uncommitted work and was not modified.
-   Use the separate pjm-design.txt proposal before implementing this item.
+Remaining work, in order (reviewed 2026-11-15)
+---------------------------------------------
+1. Multi-hour real-server Shared/ViewOnly memory observations.  Separate
+   allocator allocated/active/resident/retained bytes, decoder capacity
+   and process RSS after warmup; earlier short-run growth is unresolved.
+   Durable RSS/allocator capture is being validated; it is not completion
+   of the long-run stability item.  Real WAN/remote-application input
+   latency and broader cursor/server workloads also remain unverified.
+2. Broader public photograph/video coverage and repeated paced trials.
+   One photo now has sequential quality, aligned temporal differences,
+   paced producers and exact fresh-connection final-pixel comparisons.
+   Intermediate paced-frame observation and perceived flicker remain
+   unmeasured.  Use evidence before choosing adaptive palette reuse,
+   dithering or sparse-region compression-estimate changes; these are
+   candidate optimizations, not established requirements or proven wins.
+3. Broader third-party TLS/certificate and RSA-AES interoperability.
+   Local certificate rejection, trust-store and protocol fixtures exist;
+   they do not replace interoperability with independent servers.
+4. Review and publish source commits, pin a newer hrs-allbsd GitHub
+   distfile and retire corresponding port backports.  Port revision 18
+   builds locally; a clean poudriere jail build remains outstanding.
+5. Implement pjm native Git/CMake support and safely import this clone.
+   pjm-design.txt is a proposal, not implemented integration.  Preserve
+   unrelated pjm edits and existing FreeBSD project behavior.
+6. Diagnose the intermittent xterm fixture startup failure if it recurs.
+   Startup diagnostics, child exit checks and repeated local passes are
+   in place, but the original failure has not been reproduced or fixed.
 
 Clipboard, tmux/screen, other terminal families, audio and H.264 remain
 outside the initial version.  Terminal protocols cannot report ordinary
