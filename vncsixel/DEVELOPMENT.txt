@@ -522,3 +522,10 @@ Updates and concurrent local validation differed; these observations do
 not establish a controlled speedup.  No remote input, screen capture,
 host identity or credential was recorded.  Port revision 14 backports
 the bounded compositor and numeric counter.
+
+Port revision 14 validation: clean nice 20 build, check-plist, stage-qa
+and package pass.  The staged viewer passes 50 JPEG/fragmented display
+comparisons, adaptive palette replacement/resize/eight-color regressions,
+authentication and terminal negotiation.  cursor_samples is present and
+nonzero in the cursor fixture.  Packaged binary and docs are compared
+with the validated stage and source files before saving packages/All.
