@@ -43,7 +43,7 @@ int main(int argc, char** argv)
 		    "-PasteRate 1..10000: pasted characters/s (default 200).\n"
 		    "-PerfLog file: numeric performance summary in JSON.\n"
 		    "Run in xterm -ti vt340 with allowSendEvents:false.\n"
-		    "Ctrl+] then q quits; c/a/s latch modifiers; u releases input.\n"
+		    "Ctrl+] then h shows help; q quits; c/a/s latch; u releases input.\n"
 		    "See vncsixel/README.txt for build and terminal settings.");
 		return 0;
 	}
@@ -86,8 +86,7 @@ int main(int argc, char** argv)
 		sixelvnc::HostCursor hostCursor;
 		bool entered = false;
 		sixelvnc::Input input([&](const sixelvnc::InputEvent& e) {
-			if (e.kind == sixelvnc::InputEvent::Refresh) resized = 1;
-			else if (!connection.input(e)) stopped = 1;
+			if (!connection.input(e)) stopped = 1;
 		});
 		auto lastInput = std::chrono::steady_clock::now();
 		sixelvnc::FrameClock frames(maxFPS);

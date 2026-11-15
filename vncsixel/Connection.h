@@ -23,7 +23,7 @@ public:
 	void releaseInput();
 	void drainInput();
 	int inputTimeout() const;
-	void redraw() { dirty = forceFull = true; }
+	void redraw() { dirty = forceFull = helpDirty = true; }
 	int displayWidth = 0, displayHeight = 0;
 	bool ready = false;
 private:
@@ -33,6 +33,7 @@ private:
 	void setCursorPos(const core::Point&) override;
 	void modifiers(unsigned);
 	void status();
+	void toggleHelp();
 	void resizeFramebuffer() override;
 	void framebufferUpdateEnd() override;
 	void framebufferUpdateStart() override;
@@ -47,6 +48,8 @@ private:
 	Terminal& terminal;
 	bool dirty = false, updating = false;
 	bool prefix = false, forceFull = true, cursorKnown = false;
+	bool help = false, helpDirty = false;
+	size_t helpPage = 0, helpPages = 1;
 	std::vector<uint8_t> previousFrame;
 	unsigned latched = 0, held = 0, mouseMods = 0;
 	uint16_t buttons = 0;

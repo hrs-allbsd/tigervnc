@@ -3,6 +3,7 @@
 #include "Framebuffer.h"
 #include "Palette.h"
 #include "Damage.h"
+#include "Help.h"
 #include <rfb/PixelBuffer.h>
 #include <rfb/obfuscate.h>
 #include <core/Configuration.h>
@@ -59,7 +60,7 @@ Connection::~Connection()
 	performance.blockedWrites = terminal.blockedWrites;
 }
 int Connection::fd() { return socket->getFd(); }
-bool Connection::hideLocalCursor() const { return ready && cursorKnown && !viewOnly; }
+bool Connection::hideLocalCursor() const { return ready && cursorKnown && !viewOnly && !help; }
 void Connection::process()
 {
 	/* Include data already buffered by a TLS stream. Bound work per turn. */
@@ -177,6 +178,16 @@ int appendSixel(char* data, int size, void* context)
 }
 bool Connection::render()
 {
+	if (help) {
+		if (!helpDirty || terminal.pending()) return false;
+		auto page = localHelp(terminal.textWidth / terminal.cellWidth,
+		    terminal.textHeight / terminal.cellHeight, helpPage, viewOnly);
+		helpPages = page.pages;
+		helpPage = std::min(helpPage, helpPages - 1);
+		terminal.queue(page.output);
+		helpDirty = false;
+		return false;
+	}
 	if (!ready || updating || !dirty || terminal.pending())
 		return false;
 	auto snapshotStart = std::chrono::steady_clock::now();
@@ -354,10 +365,20 @@ void Connection::releaseInput()
 	buttons = 0;
 	prefix = false;
 }
+void Connection::toggleHelp()
+{
+	releaseInput();
+	prefix = false;
+	help = !help;
+	helpPage = 0;
+	displayWidth = displayHeight = 0;
+	redraw();
+}
 void Connection::status()
 {
+	if (help) return;
 	terminal.queue("\033[" + std::to_string(terminal.height / terminal.cellHeight + 2) +
-	    ";1H\033[2KCtrl+] q quit, r redraw, c/a/s latch, u release  [" +
+	    ";1H\033[2KCtrl+] h help, q quit, r redraw, c/a/s latch, u release  [" +
 	    ((latched & 4) ? "Ctrl " : "") + ((latched & 2) ? "Alt " : "") +
 	    ((latched & 1) ? "Shift" : "") + "] " + inputNotice);
 }
@@ -378,6 +399,30 @@ bool Connection::input(const InputEvent& e)
 		prefix = false;
 		if (discardPaste || viewOnly) return true;
 	}
+	if (e.kind == InputEvent::Refresh) { redraw(); return true; }
+	if (help) {
+		if (e.kind == InputEvent::FocusOut) releaseInput();
+		if (e.kind != InputEvent::Key || e.pasted) return true;
+		if (prefix) {
+			prefix = false;
+			if (e.key == 'q') return false;
+			if (e.key == 'h' || e.key == '?') toggleHelp();
+		} else if (e.key == ']' && (e.modifiers & 4)) prefix = true;
+		else if (e.key == XK_Escape || e.key == XK_Return) toggleHelp();
+		else if (e.key == ' ' || e.key == 'n') {
+			helpPage = (helpPage + 1) % helpPages;
+			helpDirty = true;
+		} else if (e.key == 'p') {
+			helpPage = (helpPage + helpPages - 1) % helpPages;
+			helpDirty = true;
+		}
+		return true;
+	}
+	if (!e.pasted && e.kind == InputEvent::Key && prefix &&
+	    (e.key == 'h' || e.key == '?')) {
+		toggleHelp();
+		return true;
+	}
 	if (viewOnly) {
 		if (e.kind == InputEvent::Key && prefix) {
 			prefix = false;
@@ -388,7 +433,6 @@ bool Connection::input(const InputEvent& e)
 		return true;
 	}
 	if (e.kind == InputEvent::FocusOut) { releaseInput(); status(); return true; }
-	if (e.kind == InputEvent::Refresh) { redraw(); return true; }
 	if (e.kind == InputEvent::Key) {
 		if (!e.pasted && prefix) {
 			prefix = false;
