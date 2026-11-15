@@ -181,3 +181,17 @@ rendered 1285 frames / 1364 regions: 7276118 SIXEL bytes, 20.000s CPU,
 150628 KiB peak RSS and 155250 bytes peak terminal output queue.
 No remote input or live-server screenshot was recorded.  Three minutes
 is a smoke soak, not an overnight stability result or WAN latency test.
+
+Escape timing milestone (2026-11-15)
+------------------------------------
+Added EscapeTimeout (1..1000 ms, default 50) and refreshed the idle clock
+when feeding input deferred during terminal negotiation.  The existing
+Input::expire() path and bracketed-paste isolation are preserved.
+Actual xterm tests verify separate Escape/x at 20 ms, Alt+x at 250 ms,
+isolated Escape delivery for both, and rejection of invalid values.
+29 frontend tests, authentication and terminal negotiation tests pass.
+
+Port revision 6 includes the timing option and updated documentation.
+Paste-rate limiting and local help remain pending; the new timeout does
+not implement either.  WAN/application latency, overnight soak tests,
+partial-alpha cursor coverage and broader encoding filters remain open.

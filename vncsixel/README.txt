@@ -275,3 +275,16 @@ server cursor position, clipping, empty cursors, DesktopSize and
 ExtendedDesktopSize.  Add --colors 8 for the eight-color renderer.
 --server-format rgb565 or big-endian checks negotiation of the client's
 requested 32-bit wire format; it does not force 16-bit decoding.
+
+Escape key timing
+=================
+-EscapeTimeout sets the idle wait for a standalone Escape in milliseconds
+(default 50, range 1..1000).  Increase it when a terminal connection splits
+Escape-prefixed Alt/function-key sequences across delayed reads.  Decrease
+it for quicker standalone Escape delivery.  A following ordinary character
+within the wait is interpreted as Alt+character.  The event loop checks
+expiry at up to 20 ms intervals; this is not a real-time delivery promise.
+
+  vncsixel -EscapeTimeout=150 host
+  python3 vncsixel/tests/input-timing.py /path/to/vncsixel \
+      --report /private/input-timing.json
