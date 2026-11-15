@@ -859,3 +859,17 @@ all four premature exits are rejected, the actual child codes are retained,
 and preexisting success files are removed.  After the wrapper changes,
 40/40 two-worker viewer startup checks pass.  No live server or credentials
 are involved.  Runtime code and the revision 18 package are unchanged.
+
+Final validation of the modified wrapper: 40/40 startup attempts pass at
+two workers, followed by all 600 pixel comparisons across 12 configurations
+at two workers.  Every matrix diagnostic records viewer status zero.
+Four early-exit injections pass their negative expectations.  No automatic
+retry is used.  These observations do not establish the absence of the
+original intermittent failure; the new diagnostics are intended to make
+its next occurrence actionable without guessing at a runtime fix.
+
+Records: startup-final-repeat/, startup-final-protocol/,
+startup-failure.json, startup-injected-failure/ and startup-investigation/.
+C++ builds/tests and port packaging are not repeated for this test-only
+change.  Port revision 18 remains current; multi-hour live-server stability
+and representative image/video tuning remain open.
