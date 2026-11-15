@@ -650,3 +650,20 @@ mixed cases have 201 updates without JPEG and 241 with JPEG; individual
 encoding cases retain 81 updates.  Ten repeated phases with JPEG produce
 577 updates.  --repeat-cycles controls work, not a minimum duration.
 Reports include per-mode counts, Tight stream use and reset counts.
+
+Compare libsixel output policies
+-------------------------------
+The numeric-only policy benchmark uses the installed libsixel through
+ctypes and compares its default, FAST and SIZE policies.  Six indexed
+patterns (solid, checker, bands, noise, thin, small) run with 8/256-color
+palettes.  One warmup is discarded per policy and timed order rotates.
+It reports encoded bytes and all timing samples; it does not capture a
+screen or measure xterm painting, transport or RGB quantization.  Context
+creation/destruction and the Python counting callback are included.
+
+  python3 vncsixel/tests/sixel-policy.py \
+      --samples 9 --report /private/sixel-policy.json
+
+Byte counts must repeat within a case.  Timing is an observation on the
+installed library/system; it is not a universal performance guarantee.
+The viewer's xterm protocol matrix separately validates displayed pixels.
