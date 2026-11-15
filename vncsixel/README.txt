@@ -622,3 +622,31 @@ upper bound derived from the largest wire payload and the pool's maximum
 eight buffers.  JSON reports retain allocator samples when available.
 These are capacity tests, not pixel comparisons or general leak tests;
 the separate protocol matrix performs xterm pixel comparisons.
+
+Mixed decoder workloads
+-----------------------
+--encoding mixed switches between Raw, Tight copy, ZRLE raw tiles, Tight
+2-color palette and Tight gradient without reconnecting.  It sends eight
+rectangles per mode per phase, allowing all staging buffers to see each
+mode.  Copy-filter blocks reset all four Tight streams, then reuse them;
+palette/gradient blocks retain the resulting stream history.  Small
+rectangles are 16x16; large rectangles remain 1024x768.
+
+--jpeg adds Tight JPEG blocks (cjpeg quality 80 required).  JPEG reuses
+cached fixture images, so image generation is outside repeated phases.
+Noise is deterministic synthetic data, not a representative photograph or
+video.  The palette blocks use a two-color checkerboard in both profiles.
+Each phase-end report also includes process RSS in KiB and total elapsed
+time, including fixture setup/encoding and waits, not just viewer work.
+
+  python3 vncsixel/tests/decoder-memory-matrix.py /path/to/vncsixel \
+      --mixed --jpeg --report-dir /private/mixed-memory
+  python3 vncsixel/tests/decoder-memory.py /path/to/vncsixel \
+      --encoding mixed --jpeg --content noise --repeat-cycles 10 \
+      --report /private/mixed-noise-soak.json
+
+The default extended matrix has ten cases.  With three repeated phases,
+mixed cases have 201 updates without JPEG and 241 with JPEG; individual
+encoding cases retain 81 updates.  Ten repeated phases with JPEG produce
+577 updates.  --repeat-cycles controls work, not a minimum duration.
+Reports include per-mode counts, Tight stream use and reset counts.

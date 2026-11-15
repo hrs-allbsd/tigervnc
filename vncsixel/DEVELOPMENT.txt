@@ -683,3 +683,22 @@ existing protocol matrix, which is not rerun for this test-only change.
 Reports: records/compressed-memory/summary.json and per-case JSON/logs.
 The viewer runtime and port revision 16 package remain unchanged.  No
 build, installation or push is needed for these test/documentation changes.
+
+2026-11-15: Mixed decoder streams and longer repeat workload
+---------------------------------------------------------
+The retention fixture can now switch Raw, Tight copy, ZRLE raw tiles,
+Tight two-color palette and Tight gradient on one connection.  Optional
+Tight JPEG uses cached cjpeg quality-80 images.  Eight rectangles per mode
+allow every pool slot to see each mode during a phase.  Copy-filter blocks
+reset all four Tight streams and then reuse them; subsequent palette and
+gradient blocks continue their zlib history.  JPEG does not reset streams.
+The fixture records per-mode counts, stream use and resets, elapsed time
+and phase-end process RSS, in addition to allocator/pool samples.
+
+The optional extended matrix has ten cases.  Individual encoding cases
+retain 81 updates; mixed solid/noise cases without JPEG have 201 updates;
+the JPEG mixed case has 241.  A separate ten-repeat JPEG/noise run has
+577 updates.  The palette blocks are checkerboards; noise/gradient/JPEG
+are synthetic deterministic inputs, not representative photos or video.
+Elapsed time includes fixture generation, rendering and sampling waits;
+it is not a pure viewer throughput benchmark.

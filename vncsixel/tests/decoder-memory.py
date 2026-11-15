@@ -10,6 +10,7 @@ import random
 import struct
 import zlib
 import signal
+import shutil
 import subprocess
 import tempfile
 import time
@@ -17,8 +18,9 @@ import time
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('viewer', type=Path)
 parser.add_argument('--report', type=Path, required=True)
-parser.add_argument('--encoding', choices=['raw','tight','zrle'], default='raw')
+parser.add_argument('--encoding', choices=['raw','tight','zrle','mixed'], default='raw')
 parser.add_argument('--content', choices=['solid','noise'], default='solid')
+parser.add_argument('--jpeg', action='store_true', help='Include Tight JPEG in mixed mode (requires cjpeg)')
 parser.add_argument('--repeat-cycles', type=int, default=3)
 parser.add_argument('--reset-streams', action='store_true', help='Reset all Tight streams before every rectangle')
 args = parser.parse_args()
@@ -26,6 +28,10 @@ if not 1 <= args.repeat_cycles <= 100:
     parser.error('--repeat-cycles must be 1..100')
 if args.reset_streams and args.encoding != 'tight':
     parser.error('--reset-streams requires --encoding=tight')
+if args.jpeg and args.encoding != 'mixed':
+    parser.error('--jpeg requires --encoding=mixed')
+if args.jpeg and shutil.which('cjpeg') is None:
+    parser.error('--jpeg requires cjpeg')
 args.report.unlink(missing_ok=True)
 args.report.parent.mkdir(parents=True, exist_ok=True)
 spec = importlib.util.spec_from_file_location('fixture', Path(__file__).with_name('rfb-fixture.py'))
@@ -37,16 +43,39 @@ images = {}
 streams = [zlib.compressobj() for _ in range(4)]
 zrle_stream = zlib.compressobj()
 wire_lengths = []
+modes = ['raw','tight','zrle','palette','gradient'] if args.encoding=='mixed' else [args.encoding]
+if args.jpeg: modes.append('jpeg')
+phase_updates = 8*len(modes) if args.encoding=='mixed' else 16
+coverage, tight_uses, resets = {}, [0]*4, 0
+started = time.monotonic()
+
+def gradient(rgb, width, height):
+    # The gradient predictor operates on reconstructed RGB, not residuals.
+    residual = bytearray(len(rgb))
+    for y in range(height):
+        for x in range(width):
+            offset = (y*width+x)*3
+            for channel in range(3):
+                i = offset+channel
+                left = rgb[i-3] if x else 0
+                above = rgb[i-width*3] if y else 0
+                diagonal = rgb[i-width*3-3] if x and y else 0
+                estimate = min(255,max(0,left+above-diagonal))
+                residual[i] = (rgb[i]-estimate)&255
+    return bytes(residual)
+
 def rectangle(width, height, index):
-    global streams
-    key = (width, height, index % 2)
+    global streams, resets
+    mode = modes[(index//8)%len(modes)] if args.encoding=='mixed' else args.encoding
+    coverage[mode] = coverage.get(mode,0)+1
+    key = (mode, width, height, index % 2)
     if key not in images:
         rgb = (random_source.randbytes(width*height*3) if args.content=='noise'
                else bytes((255 if index%2 else 0, 0, 255 if not index%2 else 0))*width*height)
-        if args.encoding == 'raw':
+        if mode == 'raw':
             data = bytearray(width*height*4)
             data[0::4], data[1::4], data[2::4] = rgb[2::3], rgb[1::3], rgb[0::3]
-        elif args.encoding == 'zrle':
+        elif mode == 'zrle':
             # Raw 64x64 tiles with three-byte little-endian CPIXELs.
             bgr = bytearray(len(rgb))
             bgr[0::3], bgr[1::3], bgr[2::3] = rgb[2::3], rgb[1::3], rgb[0::3]
@@ -56,26 +85,52 @@ def rectangle(width, height, index):
                     data.append(0)
                     for row in range(y,min(y+64,height)):
                         data.extend(bgr[(row*width+x)*3:(row*width+min(x+64,width))*3])
+        elif mode == 'gradient':
+            data = gradient(rgb,width,height)
+        elif mode == 'palette':
+            # Two-color rows are MSB-first, padded independently to bytes.
+            data = bytes(0xaa if (y+index)%2 else 0x55
+                         for y in range(height) for _ in range((width+7)//8))
+        elif mode == 'jpeg':
+            ppm = f'P6\n{width} {height}\n255\n'.encode()+rgb
+            data = subprocess.run(['cjpeg','-quality','80'],input=ppm,
+                                  stdout=subprocess.PIPE,stderr=subprocess.PIPE,check=True).stdout
         else:
             data = rgb  # Tight copy filter uses RGB, unlike ZRLE's CPIXEL.
         images[key] = bytes(data)
     data = images[key]
-    encoding = {'raw':0,'tight':7,'zrle':16}[args.encoding]
-    if args.encoding == 'zrle':
+    encoding = 0 if mode=='raw' else 16 if mode=='zrle' else 7
+    if mode == 'zrle':
         compressed = zrle_stream.compress(data)+zrle_stream.flush(zlib.Z_SYNC_FLUSH)
         data = struct.pack('!I',len(compressed))+compressed
-    elif args.encoding == 'tight':
-        if args.reset_streams: streams = [zlib.compressobj() for _ in range(4)]
-        stream = index%4
-        compressed = streams[stream].compress(data)+streams[stream].flush(zlib.Z_SYNC_FLUSH)
-        length = len(compressed)
+    elif encoding == 7:
+        control = 0x90 if mode=='jpeg' else (index%4)<<4
+        filters = b''
+        if mode!='jpeg':
+            # Mixed mode resets all streams before each copy-filter block,
+            # then carries zlib history across its eight rectangles.
+            reset = args.reset_streams or (args.encoding=='mixed' and mode=='tight' and index%8==0)
+            if reset:
+                streams = [zlib.compressobj() for _ in range(4)]
+                control |= 15
+                resets += 1
+            stream = index%4
+            tight_uses[stream] += 1
+            if mode=='palette':
+                control |= 64
+                filters = b'\x01\x01\xff\0\0\0\0\xff'
+            elif mode=='gradient':
+                control |= 64
+                filters = b'\x02'
+            data = streams[stream].compress(data)+streams[stream].flush(zlib.Z_SYNC_FLUSH)
+        length = len(data)
         assert 0 <= length <= 0x3fffff
         compact = bytearray([length & 127])
         if length > 127:
             compact[0] |= 128; compact.append((length>>7)&127)
             if length > 16383:
                 compact[1] |= 128; compact.append(length>>14)
-        data = bytes([(stream<<4)|(15 if args.reset_streams else 0)])+compact+compressed
+        data = bytes([control])+filters+compact+data
     wire_lengths.append(len(data))
     return (0,0,width,height,encoding,data)
 # Replace the fixture's initial Raw image before starting the viewer, so the
@@ -119,13 +174,14 @@ with tempfile.TemporaryDirectory() as directory, open(os.devnull, 'wb') as null:
         phases = []
         count = 1
         for label, width, height in [('large',1024,768),('small',16,16)]+[('repeat-'+str(i+1),1024,768) for i in range(args.repeat_cycles)]:
-            for i in range(16):
+            for i in range(phase_updates):
                 wait(lambda: server.pending is None and server.requested)
                 server.update_encoded([rectangle(width,height,count)])
                 count += 1
                 wait(lambda: server.sent>=count)
             wait(lambda: completed(count))
-            phases.append(dict(phase=label, **samples()[-1]))
+            rss = int(subprocess.check_output(['ps','-o','rss=','-p',str(pid)]))
+            phases.append(dict(phase=label, rss_kib=rss, **samples()[-1]))
         # All queue buffers rotate through large updates.  Small updates and
         # a repeated large cycle must not grow their retained capacities.
         capacity = phases[0]['decoder_buffer_bytes']
@@ -137,9 +193,15 @@ with tempfile.TemporaryDirectory() as directory, open(os.devnull, 'wb') as null:
         os.kill(pid, signal.SIGTERM); terminal.wait(timeout=15); pid=None
         result = {'encoding':args.encoding, 'content':args.content,
                   'reset_streams':args.reset_streams, 'repeat_cycles':args.repeat_cycles,
+                  'jpeg':args.jpeg, 'phase_updates':phase_updates, 'coverage':coverage,
+                  'tight_stream_uses':tight_uses, 'tight_reset_count':resets,
+                  'measurement_seconds':time.monotonic()-started,
                   'max_wire_bytes':max(wire_lengths), 'phases':phases, 'samples':samples(), 'viewer':json.loads(perf.read_text()),
                   'scope':'local rectangle buffer capacities; not an allocator leak test'}
         assert result['viewer']['updates']==count, result['viewer']
+        assert all(coverage.get(mode,0)>0 for mode in modes), coverage
+        if args.encoding=='mixed':
+            assert all(tight_uses) and resets>0, (tight_uses,resets)
         args.report.write_text(json.dumps(result,indent=2)+'\n')
         print(json.dumps({'capacity_bytes':capacity,'updates':count,'encoding':args.encoding,'content':args.content}))
     finally:
