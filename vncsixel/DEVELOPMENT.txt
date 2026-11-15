@@ -112,7 +112,7 @@ Remaining work, in order
    cursor/CopyRect/server-resize coverage.
 2. Optional photographic palette and further tuning of the sparse-region
    compression estimate, guided by representative workloads.
-3. Paste-rate limiting, configurable Escape timeout, and local help.
+3. Local help; paste pacing and configurable Escape timeout are done.
 4. TLS/RSA-AES interoperability and a host-key trust store/user workflow.
 5. Publish reviewed source commits, then replace port backports with a
    newer pinned GitHub source commit; clean poudriere jail validation.
@@ -195,3 +195,40 @@ Port revision 6 includes the timing option and updated documentation.
 Paste-rate limiting and local help remain pending; the new timeout does
 not implement either.  WAN/application latency, overnight soak tests,
 partial-alpha cursor coverage and broader encoding filters remain open.
+
+Paste pacing milestone (2026-11-15)
+-----------------------------------
+Input marks bracketed-paste boundaries and characters.  A bounded FIFO
+preserves subsequent typing order while PasteRate limits pasted keys
+(default 200/s, range 1..10000).  The steady-clock scheduler accrues no
+burst credits during stalls.  Local commands bypass the queue; release,
+focus loss, suspend and resize cancel pending keys.  Overflow cancels
+unsent keys, discards the remaining paste and displays a status notice.
+Already sent characters cannot be retracted.
+
+Pasted text excludes latched modifiers and cannot complete a local
+command prefix.  Typed keys queued behind paste retain their modifier
+state.  The queue holds at most 8192 events, not an unbounded paste.
+This limit covers the frontend key queue; TigerVNC's output stream has
+its own existing limits.  Ordinary typing is not rate-limited.
+
+Verification:
+- 33 frontend tests, including FIFO pacing/no catchup, bounds/cancel and
+  fragmented UTF-8 paste boundaries.
+- Actual xterm selection insertion at PasteRate=40: 40 characters take
+  1.018s between first and last receipt; subsequent typing stays ordered.
+- xterm tests cover modifier isolation, prefix isolation, continued RFB
+  painting during paste, local cancel, 20000-character overflow recovery,
+  immediate local quit, ViewOnly, and invalid parameter bounds.
+- Escape timing, authentication and terminal negotiation regressions pass.
+Port revision 7 includes this feature and updated documentation.
+Local help remains the next small input/usability item.  Photographic
+palette tuning, extended WAN/overnight tests and trust-store work remain.
+
+Port revision 7 validation:
+- Build at nice 20, check-plist, stage-qa and package pass.
+- Staged executable passes paced paste, focus-loss cancellation and
+  overflow recovery tests, Escape timing, and 19 RFB pixel comparisons.
+The paste harness synchronizes the X cut buffer before requesting an
+xterm selection insertion, and waits for paste arrival before typing
+behind it.  X selection delivery is asynchronous across clients.

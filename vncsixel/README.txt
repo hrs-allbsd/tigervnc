@@ -288,3 +288,34 @@ expiry at up to 20 ms intervals; this is not a real-time delivery promise.
   vncsixel -EscapeTimeout=150 host
   python3 vncsixel/tests/input-timing.py /path/to/vncsixel \
       --report /private/input-timing.json
+
+Paced paste
+===========
+Bracketed paste is sent as key events at up to PasteRate characters per
+second (default 200, range 1..10000).  This is an upper bound, not a target
+throughput: rendering, terminal and network delays can make it slower.
+Ordinary typing after a paste keeps its order.  Paste text temporarily
+excludes latched modifiers; following typed keys retain their modifiers.
+Only bracketed paste is paced; this does not rate-limit ordinary typing.
+
+  vncsixel -PasteRate=100 host
+
+Ctrl+] then u cancels pending input.  Local quit stays available while
+paste drains.  Focus loss, suspension and geometry changes also cancel
+pending keys rather than sending text to a changed context.  Cancellation
+cannot retract characters already sent to the server.
+
+At most 8192 key events are queued, including typing behind a paste.
+Overflow clears the unsent queue, discards the rest of that paste and
+shows an 'Input cancelled' notice in the status line.  Split a larger
+paste into smaller pieces if it exceeds this limit.  ViewOnly suppresses
+all pasted and typed remote input.  Pasted text never invokes local
+commands or completes a previously typed Ctrl+] prefix.
+
+  python3 vncsixel/tests/paste-smoke.py /path/to/vncsixel \
+      --report /private/paste.json
+
+The test uses an actual xterm selection insertion, verifies received key
+order and timing, then checks modifier isolation, concurrent painting,
+cancel, overflow recovery, quit and ViewOnly.  It uses a private RFB
+fixture; it sends no paste to the live server.
