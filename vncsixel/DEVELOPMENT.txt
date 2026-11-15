@@ -906,3 +906,39 @@ revision 18 remains current and is not rebuilt for this fixture change.
 Next: broaden public photographic inputs and controlled motion workloads
 before choosing palette/encoding tuning.  Multi-hour real-server memory
 stability and pjm integration also remain open.  No push or install.
+
+2026-11-15: Validate controlled photographic motion
+-------------------------------------------------
+photo-palette.py --image IMAGE --pan-frames N adds 0..60 cyclic horizontal
+shifts, 17 pixels per step.  Every frame must visibly change and stabilize
+before the next update.  The fixed palette oracle checks all channels with
+one level of tolerance for terminal percentage conversion; requiring exact
+rounding initially rejected this xterm's valid percentage conversion.
+Adaptive mode retains each frame's error without imposing a quality win.
+Eight-color adaptive/fixed errors must match for every frame.  Invalid
+bounds or a pan request without --image fail before starting a viewer.
+
+Earthrise, twelve shifts, four configurations: all 56 frames render,
+including one initial blue frame in each configuration.  Each viewer
+reports exactly 14 updates and 14 rendered frames.  Fixed 256-color RMSE
+stays 8.081924; adaptive RMSE ranges 2.480007..4.059669.  Shifting pixels
+changes adaptive quantization results, so quality is not position invariant.
+This trial does not measure temporal flicker or perceptual video quality.
+
+Fixed / PhotoPalette 256-color totals:
+  Encoded bytes: 526440 / 1395112 (about 2.65x)
+  Viewer CPU s:  0.110602 / 0.156193
+  Encode ms:    87.281 / 136.872
+Adaptive palette generation totals 11.689 ms.  These are one short trial's
+process totals, including the initial blue frame and original photograph;
+there is no isolated motion timing, repeatability or speedup claim.
+Eight-color variants both produce 63390 bytes and RMSE 34.193941 throughout.
+
+The unchanged default gradient test passes its four configurations and
+palette replacement/resize checks.  Three invalid argument cases fail as
+expected.  Records: earthrise-pan.json/.log and
+pan-gradient-regression.json/.log.  No real-server credentials, input or
+screenshots are used.  Runtime and port revision 18 remain unchanged;
+compilation and packaging are not repeated for this test-only change.
+Next work includes a broader public image corpus, paced motion throughput
+and temporal palette behavior, plus multi-hour live memory stability.
