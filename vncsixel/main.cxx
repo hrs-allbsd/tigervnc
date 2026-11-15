@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 #include "Connection.h"
 #include "FrameClock.h"
+#include "HostCursor.h"
 #include <core/Configuration.h>
 #include <cerrno>
 #include <chrono>
@@ -34,6 +35,7 @@ int main(int argc, char** argv)
 		    "-CellSize WxH, -PixelSize WxH: override terminal geometry.\n"
 		    "-SingleRect: use one bounding rectangle instead of sparse regions.\n"
 		    "-FullFrame: disable partial updates for comparison or fallback.\n"
+		    "-HideLocalCursor=0: retain the local X11 pointer.\n"
 		    "-MaxFPS 1..60: redraw rate limit (default 10).\n"
 		    "-PerfLog file: numeric performance summary in JSON.\n"
 		    "Run in xterm -ti vt340 with allowSendEvents:false.\n"
@@ -77,6 +79,7 @@ int main(int argc, char** argv)
 			return 0;
 		}
 		sixelvnc::Connection connection(host, terminal);
+		sixelvnc::HostCursor hostCursor;
 		bool entered = false;
 		sixelvnc::Input input([&](const sixelvnc::InputEvent& e) {
 			if (e.kind == sixelvnc::InputEvent::Refresh) resized = 1;
@@ -88,6 +91,7 @@ int main(int argc, char** argv)
 			if (suspended && entered) {
 				suspended = 0;
 				connection.releaseInput();
+				hostCursor.show();
 				terminal.leave();
 				raise(SIGSTOP);
 				terminal.enter();
@@ -114,6 +118,9 @@ int main(int argc, char** argv)
 			if (now - lastInput > std::chrono::milliseconds(50)) input.expire();
 			if (entered && frames.due(now) && connection.render())
 				frames.rendered(now);
+			hostCursor.update(entered && connection.hideLocalCursor(),
+			    connection.displayWidth, connection.displayHeight,
+			    terminal.textWidth, terminal.textHeight);
 			terminal.flush();
 			pollfd fds[] = {{connection.fd(), POLLIN, 0},
 			    {terminal.fd(), static_cast<short>(POLLIN | (terminal.pending() ? POLLOUT : 0)), 0}};

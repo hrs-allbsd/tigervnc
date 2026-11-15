@@ -131,3 +131,19 @@ Performance flags: -PerfLog FILE, -ViewOnly, -FullFrame, -SingleRect, -MaxFPS.
 Harness: tests/real-server-perf.py (explicit private credential-file path).
 Full summary files and logs live outside the Git source tree in records/.
 Never add CREDENTIALS.txt, live-server screenshots, or credentials to Git.
+
+Local pointer milestone (2026-11-15)
+-----------------------------------
+Referenced Xsixel's hw/kdrive/sixel/hostcursor.c and client-xterm.c.
+Added an optional dynamically loaded XFixes backend.  Native pointer
+hiding follows image bounds and focus, and is balanced on suspend/exit.
+The server releases the hide request even when the viewer is killed.
+Unlike a pointerMode escape, this does not replace the user's xterm
+resource setting.  HideLocalCursor=0 disables the backend.
+
+Actual xterm/Xvfb cursor-pixel comparisons pass for normal termination,
+disconnect, SIGKILL, both scrollbar positions, disabled hiding, ViewOnly,
+missing WINDOWID, and servers without a cursor shape.  The remote cursor
+is also checked in the rendered image.  ViewOnly intentionally leaves
+the native pointer visible.  X11 access and WINDOWID are required;
+remote SSH sessions without them retain the terminal pointer.

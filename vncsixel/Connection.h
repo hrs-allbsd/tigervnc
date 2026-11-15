@@ -15,6 +15,7 @@ public:
 	Connection(const char*, Terminal&);
 	~Connection();
 	int fd();
+	bool hideLocalCursor() const;
 	void process();
 	bool render();
 	bool input(const InputEvent&);
@@ -39,7 +40,7 @@ private:
 	std::unique_ptr<network::TcpSocket> socket;
 	Terminal& terminal;
 	bool dirty = false, updating = false;
-	bool prefix = false, forceFull = true;
+	bool prefix = false, forceFull = true, cursorKnown = false;
 	std::vector<uint8_t> previousFrame;
 	unsigned latched = 0, held = 0, mouseMods = 0;
 	uint16_t buttons = 0;

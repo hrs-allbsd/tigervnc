@@ -130,6 +130,8 @@ void Terminal::geometry()
 	if (w <= 0 || h <= 0 || cw <= 0 || ch <= 0 ||
 	    w > 16384 || h > 16384 || cw > 256 || ch > 256 || h <= ch + 12)
 		throw std::runtime_error("Invalid terminal geometry; use -PixelSize and -CellSize if queries fail");
+	textWidth = w;
+	textHeight = h;
 	int gw = 0, gh = 0;
 	std::string graphics = query("\033[?2;1;0S");
 	if (sscanf(graphics.c_str(), "\033[?2;0;%5d;%5dS", &gw, &gh) == 2 &&

@@ -228,3 +228,36 @@ Slow output may coalesce displayed frames while all RFB updates are decoded.
 Compare frame counts as well as bytes, CPU, and encoded pixels.  Omit
 --textured to verify the compressible blank-background case.  PerfLog now
 also records the number of separately encoded regions.
+
+Local pointer in xterm
+======================
+Like Xsixel's hw/kdrive/sixel/hostcursor.c, vncsixel uses XFixes 4 to hide
+the native X11 pointer while the remote cursor is drawn in the image.
+The pointer is shown in image margins, outside xterm, on focus loss,
+during suspension, and on exit.  X server cleanup also removes the hide
+request after SIGKILL; SIGKILL cannot restore terminal modes.
+
+The optional backend needs DISPLAY and xterm's WINDOWID to refer to the
+same accessible X server, and libX11.so.6 / libXfixes.so.3 at runtime.
+It loads these libraries dynamically; there is no direct Xlib linkage.
+ViewOnly sessions and servers without a received cursor shape keep the
+native pointer visible.  An explicitly empty remote cursor is respected.
+Missing libraries, XFixes support, or window information leave it visible.
+SSH sessions without access to the terminal's X server need this setup
+before automatic hiding can work.  No xterm pointerMode resource is changed.
+
+  vncsixel -HideLocalCursor=0 host
+  python3 vncsixel/build-freebsd.py --without-host-cursor
+
+ENABLE_HOST_CURSOR defaults to ON; its backend is compiled only when
+pkg-config finds x11 and xfixes development headers.  Set it OFF for a
+build without these headers.  The FreeBSD port exposes option HOSTCURSOR.
+
+  python3 vncsixel/tests/host-cursor.py /path/to/vncsixel \
+      --report /private/host-cursor.json
+
+The test compares Xvfb's cursor-bearing framebuffer with XGetImage,
+which excludes the native pointer.  It checks real pointer visibility,
+remote cursor pixels, margins, focus, suspension, and exit restoration.
+Options cover left/right scrollbars, disconnect, SIGKILL, disabled hiding,
+ViewOnly, missing WINDOWID, and missing remote cursor shape.

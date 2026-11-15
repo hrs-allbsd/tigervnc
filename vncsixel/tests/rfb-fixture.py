@@ -8,9 +8,10 @@ import time
 
 
 class Server:
-    def __init__(self, width=599, height=431, on_key=None, textured=False):
+    def __init__(self, width=599, height=431, on_key=None, textured=False, cursor=False):
         self.width, self.height = width, height
         self.on_key = on_key
+        self.cursor = cursor
         self.key_events = []
         self.requested = False
         self.listener = socket.socket()
@@ -75,7 +76,9 @@ class Server:
             while not self.closed:
                 with self.condition:
                     if self.requested and self.pending is not None:
-                        packet = struct.pack('!BBH', 0, 0, len(self.pending))
+                        cursor = (struct.pack('!HHHHi', 0, 0, 8, 8, -239) +
+                            b'\xff\0\xff\0' * 64 + b'\xff' * 8) if self.cursor and not self.sent else b''
+                        packet = struct.pack('!BBH', 0, 0, len(self.pending) + bool(cursor)) + cursor
                         for x, y, w, h, data in self.pending:
                             packet += struct.pack('!HHHHi', x, y, w, h, 0) + data
                         conn.sendall(packet)

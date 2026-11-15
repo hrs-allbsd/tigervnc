@@ -56,6 +56,7 @@ Connection::~Connection()
 	performance.blockedWrites = terminal.blockedWrites;
 }
 int Connection::fd() { return socket->getFd(); }
+bool Connection::hideLocalCursor() const { return ready && cursorKnown && !viewOnly; }
 void Connection::process()
 {
 	/* Include data already buffered by a TLS stream. Bound work per turn. */
@@ -306,6 +307,7 @@ bool Connection::render()
 void Connection::setCursor(int w, int h, const core::Point& hotspot, const uint8_t* data)
 {
 	CConnection::setCursor(w, h, hotspot, data);
+	cursorKnown = true;
 	dirty = true;
 }
 void Connection::setCursorPos(const core::Point& pos)

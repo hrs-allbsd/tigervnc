@@ -11,6 +11,7 @@ parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--build-dir', type=Path)
 parser.add_argument('--jobs', type=int, default=4)
 parser.add_argument('--test', action='store_true')
+parser.add_argument('--without-host-cursor', action='store_true')
 args = parser.parse_args()
 if platform.system() != 'FreeBSD' or args.jobs < 1:
     parser.error('FreeBSD and a positive --jobs value are required')
@@ -32,6 +33,10 @@ cmd = ['cmake', '-S', str(source), '-B', str(build), '-G', 'Ninja',
        '-DENABLE_PWQUALITY=OFF', '-DINSTALL_SYSTEMD_UNITS=OFF',
        '-DENABLE_GNUTLS=ON', '-DENABLE_NETTLE=ON', '-DENABLE_NLS=ON',
        '-DBUILD_TIMESTAMP=' + stamp]
+if args.without_host_cursor:
+    cmd.append('-DENABLE_HOST_CURSOR=OFF')
+else:
+    cmd.append('-DENABLE_HOST_CURSOR=ON')
 if args.test:
     cmd.append('-DCMAKE_REQUIRE_FIND_PACKAGE_GTest=ON')
 subprocess.run(cmd, check=True)
