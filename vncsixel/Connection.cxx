@@ -211,11 +211,14 @@ bool Connection::verifyHostKey(const uint8_t* key, size_t length, const char*)
 	    endpoint.c_str(), fingerprint.c_str()) < 0 || fflush(tty.get()) == EOF)
 		return false;
 	std::string answer;
+	bool oversized = false;
 	int c;
 	while ((c = fgetc(tty.get())) != '\n') {
-		if (c == EOF || answer.size() >= 16) return false;
-		answer += static_cast<char>(c);
+		if (c == EOF) return false;
+		if (answer.size() < 16) answer += static_cast<char>(c);
+		else oversized = true;
 	}
+	if (oversized) return false;
 	if (answer == "once") return true;
 	if (answer != "yes") return false;
 	if (defaultPath) {

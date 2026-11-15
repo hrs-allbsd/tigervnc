@@ -369,3 +369,62 @@ xterm RGB error, CPU and encoded bytes against the default.  It checks
 palette replacement, changes hidden by RGB332, resize erasure, unchanged
 skips and eight-color fallback.  This synthetic fixture is not a measured
 photograph corpus.  See DEVELOPMENT.txt for results and limitations.
+
+RSA-AES host verification and TLS
+================================
+RA2 and RA2_256 verify the server key before sending credentials.  For a
+new RSA-AES endpoint, compare the displayed SHA256 fingerprint with one
+obtained through a trusted channel.  Type exactly yes to save the public
+key, once to accept only this connection, or no/Enter to reject it.
+Saved keys match the textual host and TCP port; aliases/address spellings
+and different ports have separate entries.  A changed key is rejected
+without an override prompt or replacement.  Existing sessions and files
+are not silently migrated to a new key.
+
+  vncsixel -SecurityTypes=RA2_256 host
+  vncsixel -SecurityTypes=RA2_256 -StrictHostKeyChecking \
+      -KnownHosts=/private/known_hosts host
+
+StrictHostKeyChecking rejects unknown keys without prompting.  Matching
+saved keys need no prompt.  The default file is vncsixel_rsa_known_hosts
+in TigerVNC's data directory: $XDG_DATA_HOME/tigervnc, otherwise
+$HOME/.local/share/tigervnc, with core::getvncdatadir()'s legacy ~/.vnc
+fallback.  KnownHosts overrides the filename; its parent must already
+exist.  Default directories are created only after an explicit yes.
+New files use mode 0600.  Existing files must be regular, user-owned,
+not writable by group/others, and at most 1 MiB.  Symlink files, malformed
+records and duplicate entries for the endpoint are rejected.  Saving is
+locked and rechecked; a failed write/sync rejects the connection.
+The versioned text format stores hexadecimal endpoint and complete public
+key data, not passwords or private keys.  After a legitimate rotation,
+verify the new fingerprint independently and use a separately selected
+KnownHosts file, or carefully update the verified record offline.
+
+To compute the same fingerprint from the server's public key on a
+trusted machine:
+
+  openssl pkey -in server-private.pem -pubout -out server-public.pem
+  python3 vncsixel/tests/host-key-fingerprint.py server-public.pem
+
+The fingerprint hashes the RFB key blob (bit length, padded modulus and
+exponent), not PEM text, SSH keys or SubjectPublicKeyInfo DER.  The helper
+needs Python 3 and openssl; the port includes it with DOCS as
+share/doc/vnc-sixel/host-key-fingerprint.py.  The viewer needs neither
+Python nor openssl for host verification.
+
+TLS continues to use TigerVNC/GnuTLS certificate and hostname checks.
+-X509CA and -X509CRL select additional CA/CRL files.  Untrusted or
+hostname-mismatched certificates are rejected; this RSA store does not
+create X.509 exceptions.  TLSVnc uses anonymous TLS and does not verify
+server identity.  Select X509Vnc or RA2/RA2_256 for authenticated encrypted
+sessions.  RA2ne/RA2ne_256 protect authentication only, not later traffic.
+SecurityTypes controls negotiation as in vncviewer; no global bypass for
+certificate or changed-key checks is provided.
+
+  python3 vncsixel/tests/security-smoke.py /path/to/vncsixel \
+      --report /private/security.json
+
+The test uses temporary Xvnc servers, generated keys/certificate and a
+dummy password.  It verifies acceptance/rejection, persistence, key
+changes, all four RSA-AES variants, anonymous TLS, trusted X.509,
+untrusted certificates, hostname mismatch and terminal restoration.

@@ -112,7 +112,8 @@ Remaining work, in order
    cursor/CopyRect/server-resize coverage.
 2. Representative photograph/video workloads and further tuning of the
    sparse-region compression estimate; PhotoPalette is now available.
-3. TLS/RSA-AES interoperability and a host-key trust store/user workflow.
+3. Broader TLS/certificate and third-party RSA-AES interoperability; the
+   RSA host-key trust store and local interoperability are implemented.
 4. Publish reviewed source commits, then replace port backports with a
    newer pinned GitHub source commit; clean poudriere jail validation.
 5. pjm native Git/CMake support and safe import of the existing clone.
@@ -300,3 +301,40 @@ package pass.  The staged binary passes the generated quality fixture
 in fixed/adaptive and 256/8-color modes, including palette replacement,
 subtle RGB changes, resize erasure and unchanged-image skips.  Adaptive
 help restoration and default 19-case RFB pixel comparisons also pass.
+
+RSA-AES trust and TLS milestone (2026-11-15)
+------------------------------------------
+Replaced unconditional RSA host-key rejection with first-contact
+confirmation, SHA-256 over the RFB key blob, and a persistent complete-key
+store scoped to textual host and TCP port.  KnownHosts selects the file;
+StrictHostKeyChecking rejects unknown keys.  Changed keys never prompt
+for replacement.  yes saves, once accepts without saving, and all other
+answers reject.  X.509 verification remains unchanged and fail-closed.
+
+The store opens without following final symlinks, checks owner/type/mode,
+bounds size to 1 MiB, locks and rechecks before append, and requires sync
+before accepting a saved key.  Concurrent conflicting saves cannot replace
+an entry.  The default follows core::getvncdatadir(), including its legacy
+fallback.  A public-key helper reproduces the displayed RFB fingerprint.
+No passwords or private keys are saved in the trust store.
+
+39 frontend tests pass, including endpoint isolation, changed-key refusal,
+malformed/unsafe stores, symlinks/FIFOs, simultaneous saves and size bounds.
+19 actual Xvnc/PTY cases pass: strict rejection, default/oversized-answer rejection, once,
+explicit and default-path saves, strict matches, existing-directory reuse,
+changed keys, unsafe/malformed stores, RA2/RA2_256/RA2ne/RA2ne_256,
+anonymous TLS, trusted and untrusted X.509, and hostname mismatch.
+The expected fingerprint is independently derived from the generated PEM
+public key.  The harness isolates HOME/XDG directories and restores termios.
+Legacy authentication and terminal negotiation regressions also pass.
+
+Port revision 10 includes the trust store and the public-key fingerprint
+helper in DOCS.  Revoked/expired-certificate matrices, non-TigerVNC RSA
+servers and an X.509 exception workflow remain unimplemented/unverified.
+No live-server key, private key or credential was recorded by these tests.
+
+Port revision 10 validation: nice 20 build, check-plist, stage-qa and
+package pass.  The staged binary passes security interoperability,
+legacy authentication and 19-case RFB pixel comparisons.  Oversized
+confirmation answers are consumed through the newline and rejected,
+so their unconsumed tail cannot become later terminal input.
