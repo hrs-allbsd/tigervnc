@@ -336,3 +336,36 @@ credentials or other remote text is inserted in the help screen.
 
   python3 vncsixel/tests/help-smoke.py /path/to/vncsixel \
       --report /private/help.json
+
+Optional image-adaptive palette
+===============================
+-PhotoPalette generates a palette for each changed RGB image using
+libsixel's high-quality histogram setting and averaged-pixel colors.
+It targets photographs and smooth gradients poorly represented by RGB332.
+It is opt-in: the default remains the fixed palette and sparse updates.
+No error diffusion is enabled.  Color approximation can shift between
+frames; improvement is not guaranteed for every image or photograph.
+
+  vncsixel -PhotoPalette host
+
+Each adaptive frame redraws the whole image, including its palette.
+RGB snapshots are compared before encoding; indices from different
+palettes cannot safely be compared for damage.  Unchanged snapshots are
+skipped.  SingleRect has no additional effect in this mode.  Eight-color
+terminals retain the existing fixed eight-color path.  Help, resize and
+cursor compositing continue to work.  Full-frame output can cost more
+CPU and bandwidth and coalesce more intermediate updates than the
+fixed-palette path.  RGB snapshot retention also uses three bytes per
+pixel instead of one.  PerfLog palette_ms measures palette construction
+as a component of encode_ms; do not add the two together.
+
+  python3 vncsixel/tests/photo-palette.py /path/to/vncsixel \
+      --report /private/photo.json
+  python3 vncsixel/tests/regions-benchmark.py /path/to/vncsixel \
+      --textured --photo-palette --report /private/photo-sparse.json
+
+The quality fixture generates a smooth warm gradient and measures actual
+xterm RGB error, CPU and encoded bytes against the default.  It checks
+palette replacement, changes hidden by RGB332, resize erasure, unchanged
+skips and eight-color fallback.  This synthetic fixture is not a measured
+photograph corpus.  See DEVELOPMENT.txt for results and limitations.

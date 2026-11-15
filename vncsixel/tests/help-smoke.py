@@ -16,6 +16,7 @@ import time
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('viewer', type=Path)
 parser.add_argument('--report', type=Path, required=True)
+parser.add_argument('--viewer-option', action='append', default=[])
 args = parser.parse_args()
 spec = importlib.util.spec_from_file_location('fixture', Path(__file__).with_name('rfb-fixture.py'))
 fixture = importlib.util.module_from_spec(spec); spec.loader.exec_module(fixture)
@@ -43,7 +44,7 @@ for mode in ('normal','view-only'):
                 '-fa', 'monospace', '-xrm', 'XTerm*allowSendEvents: false',
                 '-xrm', 'XTerm*VT100.translations: #override <Key>F8: insert-selection(CUT_BUFFER0)', '-e', '/bin/sh', '-c',
                 'echo $$ > "$1"; shift; exec "$@"', 'timing', str(pidfile), str(args.viewer.resolve()),
-                *(['-ViewOnly'] if mode == 'view-only' else []), '127.0.0.1::' + str(server.port)],
+                *(['-ViewOnly'] if mode == 'view-only' else []), *args.viewer_option, '127.0.0.1::' + str(server.port)],
                 env=env, stdout=null, stderr=null)
             processes.append(terminal)
             def wait_for(check, label):
@@ -68,7 +69,9 @@ for mode in ('normal','view-only'):
                 return subprocess.check_output(['magick','xwd:-','-alpha','off','-depth','8','rgb:-'],input=data)
             def count(color):
                 rgb = shot()
-                return sum(rgb[i:i+3] == color for i in range(0,len(rgb),3))
+                channel = 2 if color == b'\0\0\xff' else 1
+                return sum(rgb[i+channel] > 220 and all(rgb[i+c] < 24 for c in range(3) if c != channel)
+                    for i in range(0,len(rgb),3))
             wait_for(lambda: count(b'\0\0\xff') >= 100, 'initial image not painted')
             def command(letter): key('ctrl+bracketright'); key(letter)
             time.sleep(.15)

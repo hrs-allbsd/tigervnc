@@ -35,6 +35,7 @@ inline HelpPage localHelp(int columns, int rows, size_t page, bool viewOnly)
 	    "Physical key releases cannot be reproduced by terminal input",
 	    "",
 	    "Options: -MaxFPS, -PasteRate, -EscapeTimeout",
+	    "-PhotoPalette uses adaptive colors and full-frame redraws",
 	    "-HideLocalCursor=0 keeps the native X11 pointer",
 	    "See vncsixel --help and README.txt for full details"
 	};

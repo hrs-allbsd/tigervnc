@@ -14,6 +14,7 @@ parser.add_argument('viewer', type=Path)
 parser.add_argument('--report', type=Path, required=True)
 parser.add_argument('--single-rect', action='store_true')
 parser.add_argument('--textured', action='store_true')
+parser.add_argument('--photo-palette', action='store_true')
 args = parser.parse_args()
 spec = importlib.util.spec_from_file_location('fixture', Path(__file__).with_name('rfb-fixture.py'))
 fixture = importlib.util.module_from_spec(spec)
@@ -29,6 +30,7 @@ try:
             str(args.viewer), '--credentials', str(credentials), '--report', str(args.report),
             '--seconds', '12', '--geometry', '100x36']
         if args.single_rect: command += ['--viewer-option=-SingleRect']
+        if args.photo_palette: command += ['--viewer-option=-PhotoPalette']
         process = subprocess.Popen(command, stdout=subprocess.DEVNULL)
         def sent(target):
             end = time.monotonic() + 10

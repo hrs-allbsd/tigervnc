@@ -110,8 +110,8 @@ Remaining work, in order
 ------------------------
 1. Remote application/WAN input latency and long-duration tests; broader encoding/pixel-format and
    cursor/CopyRect/server-resize coverage.
-2. Optional photographic palette and further tuning of the sparse-region
-   compression estimate, guided by representative workloads.
+2. Representative photograph/video workloads and further tuning of the
+   sparse-region compression estimate; PhotoPalette is now available.
 3. TLS/RSA-AES interoperability and a host-key trust store/user workflow.
 4. Publish reviewed source commits, then replace port backports with a
    newer pinned GitHub source commit; clean poudriere jail validation.
@@ -259,3 +259,44 @@ Local help validation:
 - Port revision 8 builds at nice 20, passes check-plist, stage-qa and
   package.  Its staged executable passes help and paste regressions.
 The input tests use a private RFB fixture; no live-server input was sent.
+
+Adaptive palette milestone (2026-11-15)
+--------------------------------------
+Added opt-in PhotoPalette using sixel_dither_initialize(), with the
+high-quality histogram, averaged-pixel representatives and no diffusion.
+Adaptive mode retains RGB snapshots and emits complete changed frames
+so palette changes cannot leave stale regions.  The default RGB332
+sparse path and the eight-color fallback are unchanged.
+PerfLog palette_ms is included within encode_ms, not additional to it.
+
+Controlled generated warm gradient, actual xterm RGB pixels:
+  Fixed RGB332: RMSE=17.383; PhotoPalette: RMSE=4.098.
+  Fixed and PhotoPalette on eight-color terminals: RMSE=85.452 each.
+These are synthetic gradient results, not claims about a photograph
+corpus.  Quantization can merge nearby colors and palettes can change
+across frames.  Tests also check an RGB change within a single RGB332
+bin, complete palette replacement, resize erasure and unchanged skips.
+
+Textured sparse-update fixture, same 41 received RFB updates:
+  Fixed: 40 frames, 79 regions, 6104388 SIXEL bytes, CPU=1.177s.
+  Adaptive: 14 frames, 14 regions, 16298454 bytes, CPU=4.675s.
+Slow full-frame output coalesces more intermediate displayed frames;
+compare frame counts as well as bytes.  This cost keeps the mode opt-in.
+
+Real server, passive shared ViewOnly, PhotoPalette at MaxFPS=10:
+  20.130s, 199 updates, 77 full frames, 32156274 SIXEL bytes.
+  CPU=3.620s, peak RSS=152968 KiB, palette initialization=190.919ms,
+  total encoding=2331.591ms, peak output queue=432785 bytes.
+This separate observation is not a controlled fixed/adaptive comparison.
+No real-server images or remote input were recorded.
+
+35 frontend tests pass, as do default 19-case RFB pixel comparisons
+and adaptive help/resize/suspend restoration.  Port revision 9 includes
+the feature and updated documentation.  More photographic workloads,
+palette reuse/dithering tradeoffs and sparse estimation remain open.
+
+Port revision 9 validation: nice 20 build, check-plist, stage-qa and
+package pass.  The staged binary passes the generated quality fixture
+in fixed/adaptive and 256/8-color modes, including palette replacement,
+subtle RGB changes, resize erasure and unchanged-image skips.  Adaptive
+help restoration and default 19-case RFB pixel comparisons also pass.
