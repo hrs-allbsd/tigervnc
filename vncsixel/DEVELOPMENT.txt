@@ -733,3 +733,28 @@ C++ and pixel suites are not rerun for this fixture/documentation change;
 the modified individual cases are rerun as part of the ten-case matrix.
 Multi-hour real-server measurements and representative image/video tuning
 remain the next substantial validation/performance tasks.
+
+2026-11-15: Reduce SIXEL output with libsixel SIZE policy
+------------------------------------------------------
+The viewer now explicitly selects SIXEL_ENCODEPOLICY_SIZE after creating
+its output context.  Installed libsixel 1.8.7-r2 default output matches
+FAST on the measured indexed fixtures.  Twelve 8/256-color fixtures,
+with one warmup then nine samples per policy and rotating order, show
+equal solid output and smaller SIZE output for all other cases.
+
+For 256 colors, checker output falls from 23612 to 21146 bytes (10.44%),
+bands from 108736 to 92536 (14.90%), and noise from 1163770 to 1152873
+(0.94%).  Eight-color noise falls from 332462 to 292097 bytes (12.14%).
+Median encoding times stay close on these fixtures; 256-color noise
+measures 219.382 ms default versus 219.524 ms SIZE.  The counting callback
+and context lifetime are included, but terminal painting, transport and
+RGB quantization are excluded.  These synthetic inputs are not a
+representative photograph/video workload or a universal speed guarantee.
+
+The viewer builds at nice 20 and passes all 46 frontend C++ tests.  The
+12-configuration JPEG/fragmented-update matrix passes all 600 actual xterm
+pixel comparisons, including 8/256 colors, cursor alpha and resize.
+Policy results are in records/sixel-policy.json; viewer comparisons are in
+records/size-protocol/.  compare-renderers.py additionally supports serial
+baseline/candidate trials, alternating order and rejecting output-volume
+comparisons when rendered frame/region/pixel counts differ.

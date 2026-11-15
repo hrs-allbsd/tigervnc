@@ -667,3 +667,21 @@ creation/destruction and the Python counting callback are included.
 Byte counts must repeat within a case.  Timing is an observation on the
 installed library/system; it is not a universal performance guarantee.
 The viewer's xterm protocol matrix separately validates displayed pixels.
+
+Compare complete viewer binaries on a private xterm (serial trials):
+
+  python3 vncsixel/tests/compare-renderers.py \
+      --baseline /private/vncsixel-before --candidate /path/to/vncsixel \
+      --repeats 3 --report-dir /private/render-comparison
+
+Two sparse-update workloads use solid and synthetic textured backgrounds.
+Each trial has 41 updates.  Baseline/candidate order alternates; all trial
+counters and timing data are retained.  The summary marks output comparisons
+as comparable only if frame/region/pixel counts match across every trial.
+These paced updates do not measure maximum throughput or WAN latency.
+
+SIXEL output uses libsixel's SIZE policy to reduce encoded byte count.
+This changes serialization, not palette selection or sampled source pixels.
+No additional viewer option is needed.  On the measured library, byte
+savings vary with image content; lower wire volume does not guarantee lower
+latency or faster encoding on other libraries or terminals.

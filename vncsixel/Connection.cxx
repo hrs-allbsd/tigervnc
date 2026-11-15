@@ -364,6 +364,7 @@ bool Connection::render()
 		Encoded encoded;
 		if (SIXEL_FAILED(sixel_output_new(&output, appendSixel, &encoded, nullptr)))
 			throw std::runtime_error("Cannot create SIXEL output");
+		sixel_output_set_encode_policy(output, SIXEL_ENCODEPOLICY_SIZE);
 		if (SIXEL_FAILED(sixel_dither_new(&dither, terminal.paletteColors, nullptr))) {
 			sixel_output_unref(output);
 			throw std::runtime_error("Cannot create SIXEL palette");
