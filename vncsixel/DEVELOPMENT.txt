@@ -1077,3 +1077,31 @@ capture procedure, not multi-hour memory stability or the absence of leaks.
 Runtime and port revision 18 remain unchanged.  The consolidated remaining
 work list near the start of this document supersedes older historical
 next-step notes.
+
+2026-11-15: Install vncsixel(1) with source and port builds
+-------------------------------------------------------
+Add an mdoc manual for connection syntax, parameters/defaults, credential
+precedence, trust, local commands, environment, examples and limitations.
+CMake installs it under CMAKE_INSTALL_FULL_MANDIR/man1; a temporary
+DESTDIR install matches source at usr/local/share/man/man1/vncsixel.1.
+Source and default port builds run at nice 20.  mandoc renders the page;
+lint reports only locally unavailable related manuals (vncpasswd,
+vncviewer and xterm), with no other style, warning or error diagnostics.
+
+Port revision 19 installs share/man/man1/vncsixel.1.gz independently of
+DOCS.  The default clean build passes stage, check-plist, stage-qa and
+package.  DOCS-disabled staging, plist/QA and packaging also pass, and
+both extracted manual pages match source.  The DOCS-off package contains
+no optional text documentation.  An initial DOCS-off attempt instead
+honored a saved OPTIONS_FILE_SET+=DOCS setting; fix the port build helper
+by using OPTIONS_FILE=/dev/null for explicit disabled-option runs.
+This keeps the saved host options intact and tests the requested variant.
+
+Records: man-source-build.log, man-lint.log and vncsixel-man.txt in the
+project records directory; man-build.log, man-restage.log and
+man-nodocs-final.log in port records.  Viewer logic is unchanged; no pixel
+matrix is repeated for this documentation/install-only change.  The
+public fork still points at 7889f82d, so port patches supply the manual.
+Poudriere listing fails because ZPOOL is unconfigured; no clean-jail
+validation is claimed.  No push, installation or host configuration
+change is performed.
