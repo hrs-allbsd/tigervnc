@@ -12,6 +12,7 @@
 #include <sixel.h>
 #include <algorithm>
 #include <cmath>
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <stdexcept>
@@ -24,6 +25,8 @@ namespace {
 core::StringParameter passwordFile("PasswordFile",
     "Password file for VNC authentication", "");
 core::AliasParameter passwd("passwd", &passwordFile);
+core::BoolParameter sharedSession("Shared", "Request a shared VNC session", true);
+core::BoolParameter viewOnly("ViewOnly", "Do not send remote input", false);
 }
 
 Connection::Connection(const char* name, Terminal& term) : terminal(term)
@@ -34,6 +37,7 @@ Connection::Connection(const char* name, Terminal& term) : terminal(term)
 	socket.reset(new network::TcpSocket(host.c_str(), port));
 	setServerName(host.c_str());
 	setStreams(&socket->inStream(), &socket->outStream());
+	setShared(sharedSession);
 	supportsDesktopResize = true;
 	supportsLocalCursor = true;
 	supportsCursorPosition = true;
@@ -43,6 +47,9 @@ Connection::~Connection()
 {
 	try { releaseInput(); getOutStream()->flush(); } catch (...) {}
 	close();
+	performance.ttyBytes = terminal.writtenBytes;
+	performance.peakQueueBytes = terminal.peakQueueBytes;
+	performance.blockedWrites = terminal.blockedWrites;
 }
 int Connection::fd() { return socket->getFd(); }
 void Connection::process()
@@ -80,6 +87,7 @@ void Connection::framebufferUpdateStart()
 void Connection::framebufferUpdateEnd()
 {
 	CConnection::framebufferUpdateEnd();
+	performance.updates++;
 	updating = false;
 	dirty = true;
 }
@@ -162,6 +170,7 @@ void Connection::render()
 {
 	if (!ready || updating || !dirty || terminal.pending())
 		return;
+	auto snapshotStart = std::chrono::steady_clock::now();
 	auto* fb = getFramebuffer();
 	int rw = fb->width(), rh = fb->height();
 	double scale = std::min(1.0, std::min(double(terminal.width) / rw,
@@ -189,6 +198,13 @@ void Connection::render()
 			}
 		}
 	}
+	performance.remoteWidth = rw;
+	performance.remoteHeight = rh;
+	performance.width = displayWidth;
+	performance.height = displayHeight;
+	auto encodeStart = std::chrono::steady_clock::now();
+	performance.snapshotMs += std::chrono::duration<double, std::milli>(
+	    encodeStart - snapshotStart).count();
 	sixel_output_t* output = nullptr;
 	sixel_dither_t* dither = nullptr;
 	Encoded encoded;
@@ -213,6 +229,12 @@ void Connection::render()
 	sixel_output_unref(output);
 	if (SIXEL_FAILED(result) || encoded.failed)
 		throw std::runtime_error("SIXEL encoding failed or exceeded output limit");
+	double encodeMs = std::chrono::duration<double, std::milli>(
+	    std::chrono::steady_clock::now() - encodeStart).count();
+	performance.encodeMs += encodeMs;
+	performance.maxEncodeMs = std::max(performance.maxEncodeMs, encodeMs);
+	performance.frames++;
+	performance.encodedBytes += encoded.bytes.size();
 	if (displayWidth != oldWidth || displayHeight != oldHeight)
 		terminal.queue("\033[H\033[2J");
 	terminal.queue("\033[H" + encoded.bytes);
@@ -242,7 +264,7 @@ void Connection::modifiers(unsigned wanted)
 }
 void Connection::releaseInput()
 {
-	if (!ready) return;
+	if (!ready || viewOnly) return;
 	sendPointerEvent(pointer, 0);
 	releaseAllKeys();
 	latched = held = mouseMods = 0;
@@ -259,6 +281,15 @@ void Connection::status()
 bool Connection::input(const InputEvent& e)
 {
 	if (!ready) return true;
+	if (viewOnly) {
+		if (e.kind == InputEvent::Key && prefix) {
+			prefix = false;
+			if (e.key == 'q') return false;
+			if (e.key == 'r') dirty = true;
+		} else if (e.kind == InputEvent::Key && e.key == ']' &&
+		    (e.modifiers & 4)) prefix = true;
+		return true;
+	}
 	if (e.kind == InputEvent::FocusOut) { releaseInput(); status(); return true; }
 	if (e.kind == InputEvent::Refresh) { dirty = true; return true; }
 	if (e.kind == InputEvent::Key) {

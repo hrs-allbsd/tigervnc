@@ -1,6 +1,6 @@
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(SIXEL REQUIRED IMPORTED_TARGET libsixel)
-add_executable(vncsixel main.cxx Terminal.cxx Connection.cxx Input.cxx)
+add_executable(vncsixel main.cxx Terminal.cxx Connection.cxx Input.cxx Performance.cxx)
 target_link_libraries(vncsixel PRIVATE rfbclient rfb network rdr core PkgConfig::SIXEL)
 install(TARGETS vncsixel DESTINATION ${CMAKE_INSTALL_FULL_BINDIR})
 

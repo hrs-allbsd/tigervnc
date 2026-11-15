@@ -3,6 +3,7 @@
 #define VNCSIXEL_CONNECTION_H
 #include "Terminal.h"
 #include "Input.h"
+#include "Performance.h"
 #include <rfb/CConnection.h>
 #include <network/TcpSocket.h>
 #include <memory>
@@ -33,6 +34,7 @@ private:
 	void getUserPasswd(std::string*, std::string*) override;
 	bool verifyCertificate(unsigned, const uint8_t*, size_t) override;
 	bool verifyHostKey(const uint8_t*, size_t, const char*) override;
+	Performance performance;
 	std::unique_ptr<network::TcpSocket> socket;
 	Terminal& terminal;
 	bool dirty = false, updating = false;

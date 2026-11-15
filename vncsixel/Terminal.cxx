@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 #include "Terminal.h"
+#include <algorithm>
 #include <cerrno>
 #include <chrono>
 #include <cstdio>
@@ -31,17 +32,22 @@ void Terminal::queue(const std::string& data)
 	if (data.size() > 32 * 1024 * 1024 || output.size() + data.size() > 32 * 1024 * 1024)
 		throw std::runtime_error("Terminal output exceeds 32 MiB");
 	output += data;
+	peakQueueBytes = std::max<uint64_t>(peakQueueBytes, output.size() - offset);
 }
 void Terminal::flush()
 {
 	while (pending()) {
 		ssize_t n = write(tty, output.data() + offset, output.size() - offset);
-		if (n > 0)
+		if (n > 0) {
 			offset += n;
+			writtenBytes += n;
+		}
 		else if (n < 0 && errno == EINTR)
 			continue;
-		else if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK))
+		else if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+			blockedWrites++;
 			return;
+		}
 		else
 			throw std::runtime_error("Terminal write failed");
 	}

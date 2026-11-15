@@ -119,3 +119,23 @@ VNC_PASSWORD takes precedence over the password file.  Password files
 contain the VNC-obfuscated eight-byte password, not plaintext, and are
 not used for authentication that requires a username.  This matches
 vncviewer.  Passwords are not accepted as command-line arguments.
+
+Performance measurement
+=======================
+-PerfLog FILE writes a numeric JSON summary on exit: wall/CPU seconds,
+peak RSS (KiB on FreeBSD), decoded update count, rendered frame count,
+SIXEL bytes, actual TTY bytes, peak pending output, blocked writes, and
+snapshot/encoding times.  No hostnames, credentials or pixels are logged.
+Times cover client processing, not end-to-end remote input latency.
+Use -ViewOnly to suppress remote input, including cleanup pointer events.
+Sessions are shared by default; -Shared=0 requests exclusive access.
+
+For a passive real-server sample in a private Xvfb/xterm:
+
+  python3 vncsixel/tests/real-server-perf.py /path/to/vncsixel \
+      --credentials /private/CREDENTIALS.txt --report /private/perf.json \
+      --seconds 20
+
+The credential file contains vnc user:, vnc pass:, and vnc host: lines.
+Do not add it to Git.  The harness saves statistics without screenshots.
+An idle server sample does not measure interactive workload performance.

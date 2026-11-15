@@ -2,6 +2,7 @@
 #ifndef VNCSIXEL_TERMINAL_H
 #define VNCSIXEL_TERMINAL_H
 #include <string>
+#include <cstdint>
 #include <termios.h>
 
 namespace sixelvnc {
@@ -22,6 +23,7 @@ public:
 	int fd() const { return tty; }
 	int width = 0, height = 0, cellWidth = 0, cellHeight = 0;
 	bool pixelMouse = false;
+	uint64_t writtenBytes = 0, peakQueueBytes = 0, blockedWrites = 0;
 private:
 	std::string query(const char*);
 	int tty = -1;

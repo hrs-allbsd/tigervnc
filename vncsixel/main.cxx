@@ -28,6 +28,8 @@ int main(int argc, char** argv)
 		puts("Usage: vncsixel [options] host[:display] | --terminal-check\n"
 		    "-PasswordFile file (alias -passwd): vncpasswd-format file.\n"
 		    "VNC_USERNAME and VNC_PASSWORD: same environment as vncviewer.\n"
+		    "-ViewOnly: suppress remote input; -Shared=0: exclusive session.\n"
+		    "-PerfLog file: numeric performance summary in JSON.\n"
 		    "Run in xterm -ti vt340 with allowSendEvents:false.\n"
 		    "Ctrl+] then q quits; c/a/s latch modifiers; u releases input.\n"
 		    "See vncsixel/README.txt for build and terminal settings.");
