@@ -14,7 +14,7 @@
 #include <unistd.h>
 
 namespace {
-core::IntParameter maxFPS("MaxFPS", "Maximum terminal redraw rate", 10, 1, 60);
+core::IntParameter maxFPS("MaxFPS", "Maximum terminal redraw rate", 30, 1, 60);
 core::IntParameter escapeTimeout("EscapeTimeout",
     "Milliseconds to wait for an Escape key sequence", 50, 1, 1000);
 volatile sig_atomic_t stopped = 0, resized = 0, suspended = 0;
@@ -56,7 +56,7 @@ int main(int argc, char** argv)
 		    "-NoJPEG: suppress JPEG capability and quality hints.\n"
 		    "-PhotoPalette: adaptive palette with full-frame output (256 colors).\n"
 		    "-HideLocalCursor=0: retain the local X11 pointer.\n"
-		    "-MaxFPS 1..60: redraw rate limit (default 10).\n"
+		    "-MaxFPS 1..60: redraw rate limit (default 30).\n"
 		    "-EscapeTimeout 1..1000: Escape sequence wait in ms (default 50).\n"
 		    "-PasteRate 1..10000: pasted characters/s (default 200).\n"
 		    "-PerfLog file: numeric performance summary in JSON.\n"

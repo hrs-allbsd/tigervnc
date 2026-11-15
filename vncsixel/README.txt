@@ -191,7 +191,7 @@ remaining work.
 
 Input response latency
 ======================
--MaxFPS sets the maximum redraw rate (default 10, range 1..60).  The
+-MaxFPS sets the maximum redraw rate (default 30, range 1..60).  The
 rate timer advances only when a frame is actually queued.  Idle or blocked
 attempts do not postpone the next changed frame.  Poll wakes at a pending
 frame deadline instead of adding a fixed 20 ms delay.  A higher rate can

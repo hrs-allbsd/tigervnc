@@ -16,7 +16,7 @@ Completed milestones
 6. Fast terminal queries, XTSMGRAPHICS bounds/colors, manual geometry,
    and an eight-color fallback for limited terminals.
 7. Reproducible input-to-image latency measurements, idle-aware frame
-   deadlines, and configurable MaxFPS (1..60, default 10).
+   deadlines, and configurable MaxFPS (1..60, default 30).
 8. Independent sparse regions with color-run/palette cost estimation;
    SingleRect remains a fallback for diagnosis and comparison.
 
