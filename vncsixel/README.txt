@@ -179,3 +179,10 @@ For automated negotiation/restore tests without X11:
   python3 vncsixel/tests/terminal-probe.py /path/to/vncsixel
 
 Add --colors 8 to damage-smoke.py to verify the eight-color path in xterm.
+
+Add --slow-pty to damage-smoke.py to pause xterm's PTY reader while the
+server sends further updates.  The test verifies bounded queued output,
+continued RFB decoding, and correct latest-frame display after resume.
+
+See DEVELOPMENT.txt for implementation status, measured results, and
+remaining work.

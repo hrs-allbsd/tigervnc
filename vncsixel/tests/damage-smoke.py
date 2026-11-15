@@ -15,6 +15,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('viewer', type=Path)
 parser.add_argument('--records', type=Path, required=True)
 parser.add_argument('--colors', type=int, default=256)
+parser.add_argument('--slow-pty', action='store_true')
 args = parser.parse_args()
 args.records.mkdir(parents=True, exist_ok=True)
 spec = importlib.util.spec_from_file_location('fixture', Path(__file__).with_name('rfb-fixture.py'))
@@ -106,11 +107,51 @@ with tempfile.TemporaryDirectory() as directory, open(os.devnull, 'wb') as null:
                 return matches[0] >= 35
             wait_for(same, 'partial and full redraw differ')
             prior = partial
+        if args.slow_pty:
+            # Stop only xterm's reader, leaving the viewer and RFB server
+            # running.  A busy image fills the PTY; subsequent RFB updates
+            # must still be decoded without accumulating encoded frames.
+            pixels = bytearray()
+            for y in range(server.height):
+                for x in range(server.width):
+                    c = (x * 17 + y * 29) & 255
+                    pixels.extend(((c & 3) * 255 // 3,
+                        ((c >> 2) & 7) * 255 // 7, (c >> 5) * 255 // 7, 0))
+            os.kill(terminal.pid, signal.SIGSTOP)
+            try:
+                target = server.sent + 1
+                server.update(0, 0, server.width, server.height, bytes(pixels))
+                wait_for(lambda: server.sent >= target, 'busy image not received')
+                for n in range(6):
+                    target += 1
+                    server.update(20 + n, 20, 1, 1, b'\0\0\0\0')
+                    wait_for(lambda: server.sent >= target, 'RFB stalled on blocked PTY')
+                # The queue stays blocked while further updates are decoded.
+                assert os.kill(int(pidfile.read_text()), 0) is None
+            finally:
+                os.kill(terminal.pid, signal.SIGCONT)
+            image[0] = b''
+            stable[0] = 0
+            def resumed():
+                current = shot()
+                stable[0] = stable[0] + 1 if current == image[0] else 0
+                image[0] = current
+                return stable[0] >= 35 and current != prior
+            wait_for(resumed, 'blocked image did not finish after resume')
+            partial = image[0]
+            subprocess.run(['xdotool', 'key', 'ctrl+bracketright', 'r'], env=env, check=True)
+            matches[0] = 0
+            wait_for(same, 'latest framebuffer lost while PTY was blocked')
         os.kill(int(pidfile.read_text()), signal.SIGTERM)
         terminal.wait(timeout=10)
         data = json.loads(report.read_text())
         assert data['partial_frames'] >= len(cases), data
         assert data['full_frames'] >= len(cases) + 1, data
+        if args.slow_pty:
+            assert data['blocked_writes'] > 0, data
+            assert data['peak_queue_bytes'] < 32 * 1024 * 1024, data
+            assert data['updates'] >= len(cases) + 8, data
+            print('PASS: blocked PTY stays bounded, RFB progresses, latest framebuffer preserved')
         print('PASS: partial/full pixel equality, black erasure, adjacent regions, lower-right band, shared/view-only')
     finally:
         for process in reversed(processes):

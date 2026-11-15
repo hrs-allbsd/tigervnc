@@ -1,0 +1,93 @@
+vnc-sixel implementation status and measurements
+================================================
+Updated: 2026-11-15 JST
+
+Completed milestones
+--------------------
+1. Terminal/RFB viewer, keyboard/mouse input, cursor composition,
+   resize, suspend/resume, and restoration on exit/disconnect.
+2. Large framebuffer support (64M pixels) and vncviewer-compatible
+   credential sources: environment and vncpasswd files.
+3. Numeric performance logs and passive shared/view-only real-server
+   measurement in a private Xvfb/xterm.  No remote input or screenshots.
+4. Indexed fixed-palette encoding and aligned changed-region redraw.
+   Identical displayed frames are skipped.  FullFrame is the fallback.
+5. X11-independent terminal configure; upstream default builds preserved.
+6. Fast terminal queries, XTSMGRAPHICS bounds/colors, manual geometry,
+   and an eight-color fallback for limited terminals.
+
+Real-server observations
+------------------------
+Client: FreeBSD 15.1-STABLE/aarch64, xterm 410, libsixel 1.8.7.
+Remote framebuffer: 5120x4680.  Displayed snapshot: 846x774.
+Each sample lasted approximately 20 seconds in view-only mode.  Remote
+screen updates differed between samples.  These are observations, not
+controlled benchmarks or end-to-end input-latency measurements.
+No server name, username, password, or screen content is recorded here.
+
+Original RGB888 full frames:
+  wall=20.074s, cpu=11.046s, max RSS=147736 KiB
+  frames=50, SIXEL=11260948 bytes, updates=76
+  mean encode=208.772ms, max encode=276.465ms
+  snapshot total=148.167ms, queue peak=231782 bytes
+
+Indexed PAL8 full frames:
+  wall=20.028s, cpu=2.726s, max RSS=150964 KiB
+  frames=65, SIXEL=14724433 bytes, updates=112
+  mean encode=23.537ms, max encode=32.418ms
+  snapshot total=496.361ms, queue peak=231683 bytes
+
+Indexed PAL8 partial frames:
+  wall=20.079s, cpu=0.948s, max RSS=148132 KiB
+  frames=42, SIXEL=1225407 bytes, updates=118
+  mean encode=2.945ms, max encode=26.538ms
+  snapshot total=279.364ms, queue peak=229293 bytes
+
+The final sample used one full frame and 41 partial frames, and skipped
+26 unchanged snapshots.  Peak RSS is comparable across samples; the
+framebuffer still dominates memory use.  Encoding is no longer the main
+CPU cost in these observations.  A worker thread is deferred until a
+larger or more demanding workload demonstrates a remaining need.
+
+Verification
+------------
+- 21 frontend unit tests: parser, checked dimensions, quantization, damage.
+- 273 upstream unit tests and the normal vncviewer build.
+- Authentication PTY tests: echo, environment, password files, precedence.
+- Terminal PTY tests: color limits, missing replies, manual/invalid sizes,
+  graphics bounds, fast query completion, and termios restoration.
+- Actual xterm pixel comparisons: partial versus forced full redraw,
+  black erasure, adjacent colors, lower-right final band; 256/8 colors.
+- xterm integration: input, suspend/resume, resize, signal/disconnect
+  termination, and termios/private-mode restoration; 6K framebuffer.
+- Paused xterm reader: bounded pending output, RFB update progress, and
+  preservation of the latest framebuffer on resume.
+- Terminal build explicitly disables X11 discovery and links no Xlib/FLTK.
+- Port builds at nice 20 and passes check-plist and stage-qa.
+
+Remaining work, in order
+------------------------
+1. Controlled end-to-end input latency, continuous animation, and
+   long-duration tests; broader encoding/pixel-format and
+   cursor/CopyRect/server-resize coverage.
+2. Multiple independent dirty tiles if separated updates make the current
+   single bounding rectangle inefficient; optional photographic palette.
+3. Paste-rate limiting, configurable Escape timeout, and local help.
+4. TLS/RSA-AES interoperability and a host-key trust store/user workflow.
+5. Publish reviewed source commits, then replace port backports with a
+   newer pinned GitHub source commit; clean poudriere jail validation.
+6. pjm native Git/CMake support and safe import of the existing clone.
+   The pjm checkout has unrelated uncommitted work and was not modified.
+   Use the separate pjm-design.txt proposal before implementing this item.
+
+Clipboard, tmux/screen, other terminal families, audio and H.264 remain
+outside the initial version.  Terminal protocols cannot report ordinary
+physical key releases reliably; a renderer change cannot remove that limit.
+
+Reproduce
+---------
+See README.txt for build, authentication, terminal and test commands.
+Performance flags: -PerfLog FILE, -ViewOnly, -FullFrame.
+Harness: tests/real-server-perf.py (explicit private credential-file path).
+Full summary files and logs live outside the Git source tree in records/.
+Never add CREDENTIALS.txt, live-server screenshots, or credentials to Git.
