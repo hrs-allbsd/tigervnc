@@ -15,6 +15,10 @@ Completed milestones
 5. X11-independent terminal configure; upstream default builds preserved.
 6. Fast terminal queries, XTSMGRAPHICS bounds/colors, manual geometry,
    and an eight-color fallback for limited terminals.
+7. Reproducible input-to-image latency measurements, idle-aware frame
+   deadlines, and configurable MaxFPS (1..60, default 10).
+8. Independent sparse regions with color-run/palette cost estimation;
+   SingleRect remains a fallback for diagnosis and comparison.
 
 Real-server observations
 ------------------------
@@ -49,9 +53,46 @@ framebuffer still dominates memory use.  Encoding is no longer the main
 CPU cost in these observations.  A worker thread is deferred until a
 larger or more demanding workload demonstrates a remaining need.
 
+
+Controlled local input latency (100 samples)
+--------------------------------------------
+XTEST injects a key into xterm.  A local RFB fixture changes a response
+rectangle, and XGetImage observes the painted pixel.  Input phases use
+the same seeded sequence; two warmups are excluded.  This includes local
+RFB transport and xterm drawing, but not physical scanout, WAN RTT, or
+remote application processing.
+
+Previous timer, 10 fps: median=77.723ms, p95=126.163ms, max=129.607ms
+Idle-aware timer, 10 fps: median=46.770ms, p95=82.312ms, max=93.190ms
+Idle-aware timer, 30 fps: median=5.799ms, p95=17.677ms, max=25.231ms
+
+Sparse-region workload
+-----------------------
+The fixture sends the same initial image and 40 paired distant updates.
+All 41 RFB updates are decoded in each case; slow terminal output can
+coalesce intermediate displayed frames.
+
+Textured, SingleRect: 22 frames, 20242841 SIXEL bytes, 4504873 encoded pixels
+Textured, sparse regions: 40 frames, 6104388 SIXEL bytes, 1445056 encoded pixels
+Blank, SingleRect: 41 frames, 195166 SIXEL bytes, 8347129 encoded pixels
+Blank, sparse selection: 41 frames, 195166 SIXEL bytes, 8347129 encoded pixels
+
+Splitting by area alone increased bytes on blank backgrounds because
+SIXEL compresses long single-color runs efficiently.  The final heuristic
+accounts for color transitions and per-DCS palette overhead; the blank
+fixture therefore retains identical output byte counts.  The estimate is
+not a guarantee of optimal compression for every image.
+
+Real-server regression with sparse regions and MaxFPS=30:
+  105 frames, 124 regions, 783880 SIXEL bytes in 20.132s.
+  CPU=2.224s, encoding=48.326ms total,
+  maximum encoding=16.211ms, RSS=147896 KiB.
+This is a separate passive observation, not the controlled fixture workload.
+
 Verification
 ------------
-- 21 frontend unit tests: parser, checked dimensions, quantization, damage.
+- 29 frontend unit tests: parser, checked dimensions, quantization, damage,
+  sparse coverage/fragmentation, and frame scheduling.
 - 273 upstream unit tests and the normal vncviewer build.
 - Authentication PTY tests: echo, environment, password files, precedence.
 - Terminal PTY tests: color limits, missing replies, manual/invalid sizes,
@@ -67,11 +108,10 @@ Verification
 
 Remaining work, in order
 ------------------------
-1. Controlled end-to-end input latency, continuous animation, and
-   long-duration tests; broader encoding/pixel-format and
+1. Remote application/WAN input latency and long-duration tests; broader encoding/pixel-format and
    cursor/CopyRect/server-resize coverage.
-2. Multiple independent dirty tiles if separated updates make the current
-   single bounding rectangle inefficient; optional photographic palette.
+2. Optional photographic palette and further tuning of the sparse-region
+   compression estimate, guided by representative workloads.
 3. Paste-rate limiting, configurable Escape timeout, and local help.
 4. TLS/RSA-AES interoperability and a host-key trust store/user workflow.
 5. Publish reviewed source commits, then replace port backports with a
@@ -87,7 +127,7 @@ physical key releases reliably; a renderer change cannot remove that limit.
 Reproduce
 ---------
 See README.txt for build, authentication, terminal and test commands.
-Performance flags: -PerfLog FILE, -ViewOnly, -FullFrame.
+Performance flags: -PerfLog FILE, -ViewOnly, -FullFrame, -SingleRect, -MaxFPS.
 Harness: tests/real-server-perf.py (explicit private credential-file path).
 Full summary files and logs live outside the Git source tree in records/.
 Never add CREDENTIALS.txt, live-server screenshots, or credentials to Git.
