@@ -19,6 +19,8 @@ parser.add_argument('viewer', type=Path)
 parser.add_argument('--report', required=True, type=Path)
 parser.add_argument('--server-format', choices=['rgb888', 'rgb565', 'big-endian'], default='rgb888',
     help='ServerInit format; viewer still negotiates RGB888 update pixels')
+parser.add_argument('--jpeg', action='store_true',
+    help='Enable QualityLevel=8 and add a cjpeg-generated Tight JPEG case')
 parser.add_argument('--fragment-updates', action='store_true',
     help='Send a bounded update prefix in small, delayed writes')
 parser.add_argument('--colors', type=int, choices=[8, 256], default=256)
@@ -131,7 +133,8 @@ with tempfile.TemporaryDirectory() as directory, open(os.devnull, 'wb') as null:
             '-fa', 'monospace', '-bg', 'black', '-fg', 'white', '-b', '0', '-bw', '0', '-xrm', 'XTerm*allowSendEvents: false',
             '-xrm', 'XTerm*numColorRegisters: ' + str(args.colors), '-e', '/bin/sh', '-c',
             wrapper, 'protocol', str(pidfile), str(args.viewer.resolve()), '-ViewOnly',
-            '-MaxFPS=30', '-PerfLog=' + str(perf), '127.0.0.1::' + str(server.port)],
+            '-MaxFPS=30', '-PerfLog=' + str(perf), *(['-QualityLevel=8'] if args.jpeg else []),
+            '127.0.0.1::' + str(server.port)],
             env=env, stdout=null, stderr=null)
         processes.append(terminal)
         windows = []
@@ -300,6 +303,19 @@ with tempfile.TemporaryDirectory() as directory, open(os.devnull, 'wb') as null:
         rectangle = tight(30,240,320,160,rgb,filter_data=b'\x00')
         assert rectangle[-1][2] & 128 and rectangle[-1][3] & 128, 'need three-byte Tight length'
         update('Tight explicit copy three-byte length', [rectangle])
+        if args.jpeg:
+            assert -24 in server.encodings, 'JPEG requires the quality hint'
+            rgb = b''.join(colors[(x//16+4*(y//16))%8] for y in range(48) for x in range(64))
+            jpeg = subprocess.check_output(['cjpeg','-quality','90','-sample','1x1','-baseline'],
+                input=b'P6\n64 48\n255\n'+rgb)
+            decoded = subprocess.check_output(['djpeg','-pnm'],input=jpeg)
+            magic,dimensions,maximum,reference = decoded.split(b'\n',3)
+            assert (magic,dimensions,maximum)==(b'P6',b'64 48',b'255')
+            assert len(reference)==len(rgb) and max(abs(a-b) for a,b in zip(reference,rgb))<=3
+            # Near-corner JPEG errors map back to exact fixed-palette colors.
+            # This tests transport/RGB placement, not independent codec quality.
+            paint(380,280,64,48,rgb)
+            update('Tight JPEG primary-color blocks', [(380,280,64,48,7,b'\x90'+compact(len(jpeg))+jpeg)])
         # Shape, hotspot, mask, position, clipping and shape removal.
         position, hotspot, cursor_size = (180,180), (3,2), (9,7)
         cursor = b''.join(b'\xff\0\xff\xff' if x < 5 else b'\0\0\0\0' for y in range(7) for x in range(9))
@@ -327,7 +343,7 @@ with tempfile.TemporaryDirectory() as directory, open(os.devnull, 'wb') as null:
             update('resize repaint lower right', [raw(nw-7,nh-5,7,5,b'\xff\0\xff')])
         os.kill(int(pidfile.read_text()), signal.SIGTERM); terminal.wait(timeout=10)
         if args.fragment_updates: assert server.update_writes > server.sent
-        result = {'fragment_updates': args.fragment_updates, 'update_writes': server.update_writes,
+        result = {'jpeg': args.jpeg, 'fragment_updates': args.fragment_updates, 'update_writes': server.update_writes,
                   'checks': checks, 'server_format': args.server_format, 'colors': args.colors,
                   'negotiated_format': server.client_format or server.server_format,
                   'viewer': json.loads(perf.read_text()), 'scope': 'independent RGB model vs actual xterm pixels'}

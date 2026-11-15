@@ -108,9 +108,9 @@ Verification
 
 Remaining work, in order
 ------------------------
-1. Remote application/WAN input latency and long-duration tests; Tight/JPEG,
-   semitransparent cursors and broader server interoperability.  Hextile/ZRLE,
-   CopyRect and resize now have a 12-configuration pixel comparison matrix.
+1. Remote application/WAN input latency and long-duration tests;
+   semitransparent cursors and broader server interoperability.  Tight/JPEG,
+   Hextile/ZRLE, CopyRect and resize have a 12-configuration pixel matrix.
 2. Representative photograph/video workloads and further tuning of the
    sparse-region compression estimate; PhotoPalette is now available.
 3. Broader TLS/certificate and third-party RSA-AES interoperability; the
@@ -462,3 +462,20 @@ a large explicit Copy filter exercises three-byte compact lengths.
 All 40 displayed states match the xterm RGB model in the default mode.
 The fixture generates packets without TigerVNC encoders, following the
 rfbproto Tight specification and common/rfb/TightConstants.h.
+
+2026-11-15: Tight JPEG/compression options
+-----------------------------------------
+QualityLevel and CompressLevel accept -1..9 and use the existing
+CConnection setters.  Both default to -1 (no hint), retaining prior
+Tight behavior.  Values 0..9 match vncviewer's wire hint values.
+NoJPEG takes precedence over the quality hint and suppresses standalone
+JPEG capability via the existing core encoder negotiation.
+
+13 wire-level option cases pass, covering bounds, split/case-insensitive
+forms, repeated options, hint suppression and NoJPEG overrides.  All 12
+protocol configurations pass 41 displayed states each (492 comparisons),
+including cjpeg-generated Tight JPEG primary-color blocks.  djpeg checks
+the fixture's small codec error before fixed-palette pixel comparisons.
+This verifies transport/channel placement, not independent JPEG codec
+quality or representative photograph/video workloads.  The 39 frontend
+tests pass.  Port revision 13 backports the two options and documentation.

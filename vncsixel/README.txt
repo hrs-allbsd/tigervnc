@@ -285,7 +285,7 @@ TCP may coalesce writes; packet or recv() boundaries are not assumed.
 Reports include the negotiated format and update write count.
 
 Run all 12 combinations (three ServerInit formats, 8/256 colors,
-normal/fragmented updates), each with 28 pixel comparisons:
+normal/fragmented updates), each with 40 lossless pixel comparisons:
 
   python3 vncsixel/tests/protocol-matrix.py /path/to/vncsixel \
       --report-dir /private/protocol-matrix --jobs 2
@@ -480,3 +480,31 @@ It does not add issuer coverage or signature verification beyond the
 existing GnuTLS trusted-CRL handling.  Supply verified CRLs from your
 CA.  Optional default files and the final explicit empty override retain
 the previous behavior.  TLS security types without X.509 do not use CRLs.
+
+Tight compression and JPEG hints
+--------------------------------
+-QualityLevel accepts -1..9.  The default -1 omits the Tight JPEG quality
+hint, preserving the previous lossless Tight behavior.  Values 0..9
+allow Tight JPEG, from low to high quality, using vncviewer's hint values.
+-CompressLevel accepts -1..9.  The default -1 leaves compression to the
+server; 0..9 requests low through high compression.  These are server
+hints and do not force a particular encoding or measured image quality.
+-NoJPEG suppresses both standalone JPEG capability and Tight JPEG
+quality hints, even when QualityLevel is set.  It retains lossless Tight.
+PhotoPalette independently controls terminal color quantization.
+
+Example: vncsixel -QualityLevel=8 -CompressLevel=2 host:display
+
+Tight lossless tests include Copy, Fill, Palette and Gradient filters,
+four persistent zlib streams, resets, row padding, the 12-byte threshold
+and compact lengths.  Add --jpeg to protocol-smoke.py or protocol-matrix.py
+to enable QualityLevel=8 and a 41st displayed state: Tight JPEG blocks.
+This optional fixture requires cjpeg/djpeg (libjpeg-turbo tools).  It
+checks JPEG transport, RGB ordering and terminal placement with primary
+color blocks.  It is not a photograph/video quality measurement or an
+independent JPEG codec test; both codec paths use libjpeg.
+
+  python3 vncsixel/tests/encoding-options.py /path/to/vncsixel \
+      --report /private/encoding-options.json
+  python3 vncsixel/tests/protocol-matrix.py /path/to/vncsixel --jpeg \
+      --report-dir /private/tight-matrix --jobs 2

@@ -10,6 +10,7 @@ import sys
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('viewer', type=Path)
 parser.add_argument('--report-dir', required=True, type=Path)
+parser.add_argument('--jpeg', action='store_true')
 parser.add_argument('--jobs', type=int, default=1)
 args = parser.parse_args()
 if not 1 <= args.jobs <= 3:
@@ -34,10 +35,11 @@ def run(case):
     command = [sys.executable, str(script), str(viewer), '--report', str(report),
                '--server-format', pixel_format, '--colors', str(colors)]
     if fragmented: command.append('--fragment-updates')
+    if args.jpeg: command.append('--jpeg')
     with (args.report_dir / (name + '.log')).open('w') as log:
         subprocess.run(command, stdout=log, stderr=subprocess.STDOUT, check=True)
     result = json.loads(report.read_text())
-    assert len(result['checks']) == 40, name
+    assert len(result['checks']) == (41 if args.jpeg else 40), name
     assert result['negotiated_format'] == [32,24,0,1,255,255,255,16,8,0], name
     return {'case': name, 'comparisons': len(result['checks']),
             'negotiated_format': result['negotiated_format']}

@@ -39,6 +39,10 @@ namespace {
 core::StringParameter knownHosts("KnownHosts", "RSA-AES known-hosts file", "");
 core::BoolParameter strictHostKeyChecking("StrictHostKeyChecking",
     "Reject unknown RSA-AES host keys without prompting", false);
+core::IntParameter jpegQuality("QualityLevel",
+    "Tight JPEG quality hint; -1 omits hint, 0 low to 9 high", -1, -1, 9);
+core::IntParameter compressionLevel("CompressLevel",
+    "Compression hint; -1 leaves server default, 0 low to 9 high", -1, -1, 9);
 core::IntParameter pasteRate("PasteRate",
     "Maximum pasted characters per second", 200, 1, 10000);
 core::StringParameter passwordFile("PasswordFile",
@@ -63,6 +67,8 @@ Connection::Connection(const char* name, Terminal& term, bool ca, bool crl) :
 	setServerName(host.c_str());
 	setStreams(&socket->inStream(), &socket->outStream());
 	setShared(sharedSession);
+	setQualityLevel(jpegQuality);
+	setCompressLevel(compressionLevel);
 	supportsDesktopResize = true;
 	supportsLocalCursor = true;
 	supportsCursorPosition = true;
