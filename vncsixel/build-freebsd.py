@@ -26,6 +26,7 @@ stamp = datetime.fromtimestamp(int(epoch), timezone.utc).strftime('%Y-%m-%d %H:%
 cmd = ['cmake', '-S', str(source), '-B', str(build), '-G', 'Ninja',
        '-DCMAKE_BUILD_TYPE=RelWithDebInfo', '-DCMAKE_PREFIX_PATH=/usr/local',
        '-DBUILD_SIXEL_VIEWER=ON', '-DBUILD_VIEWER=OFF', '-DBUILD_JAVA=OFF',
+       '-DBUILD_X11=OFF', '-DCMAKE_DISABLE_FIND_PACKAGE_X11=ON',
        '-DENABLE_H264=OFF', '-DENABLE_AUDIO=OFF', '-DENABLE_WAYLAND=OFF',
        '-DENABLE_PAM=OFF', '-DENABLE_SELINUX=OFF', '-DENABLE_SYSTEMD=OFF',
        '-DENABLE_PWQUALITY=OFF', '-DINSTALL_SYSTEMD_UNITS=OFF',

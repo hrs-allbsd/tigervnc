@@ -9,8 +9,11 @@ The helper sets and checks nice 20, configures Ninja outside the source
 checkout, and builds only vncsixel and its optional parser tests.
 Requirements are documented by BUILDING.txt, plus libsixel (pkg-config
 module libsixel), Ninja and Python 3.  The parser tests need GoogleTest.
-The current top-level configure still needs X11 development headers,
-even with BUILD_VIEWER=OFF.  vncsixel itself does not link FLTK or Xlib.
+Use BUILD_SIXEL_VIEWER=ON, BUILD_VIEWER=OFF and BUILD_X11=OFF to configure
+without X11 development headers or FLTK.  BUILD_TESTING=OFF also omits
+tests and performance tools from package builds.  The helper uses these
+viewer/X11 settings and explicitly disables X11 package discovery.
+The vncsixel binary does not link FLTK or Xlib.
 
 Start in a fresh xterm:
 

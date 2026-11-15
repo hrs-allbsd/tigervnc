@@ -4,7 +4,7 @@ add_executable(vncsixel main.cxx Terminal.cxx Connection.cxx Input.cxx Performan
 target_link_libraries(vncsixel PRIVATE rfbclient rfb network rdr core PkgConfig::SIXEL)
 install(TARGETS vncsixel DESTINATION ${CMAKE_INSTALL_FULL_BINDIR})
 
-if(GTest_FOUND)
+if(BUILD_TESTING AND GTest_FOUND)
   include(GoogleTest)
   enable_testing()
   add_executable(vncsixel-input-tests tests/InputTest.cxx tests/FramebufferTest.cxx tests/PaletteTest.cxx tests/DamageTest.cxx Input.cxx)

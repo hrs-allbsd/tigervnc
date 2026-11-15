@@ -137,8 +137,12 @@ macro(trioption VAR DESC)
   set_property(CACHE ${VAR} PROPERTY STRINGS AUTO ON OFF)
 endmacro()
 
-# X11 stuff. It's in a if() so that we can say REQUIRED
-if(UNIX AND NOT APPLE)
+trioption(BUILD_VIEWER "Build TigerVNC viewer")
+option(BUILD_X11 "Build Unix X11 servers and utilities" ON)
+option(BUILD_TESTING "Build tests and performance tools" ON)
+
+# Only X11 viewers, servers and utilities need X11 development files.
+if(UNIX AND NOT APPLE AND (BUILD_VIEWER OR BUILD_X11))
   find_package(X11 COMPONENTS Xext REQUIRED)
   if(X11_Xdamage_LIB)
     set(HAVE_XDAMAGE 1)
@@ -272,7 +276,6 @@ if(BUILD_JAVA)
   add_subdirectory(java)
 endif()
 
-trioption(BUILD_VIEWER "Build TigerVNC viewer")
 if(BUILD_VIEWER)
   # Check for FLTK
   set(FLTK_SKIP_FLUID TRUE)
@@ -482,7 +485,7 @@ if(WIN32)
   add_subdirectory(win)
 else()
   # No interest in building x related parts on Apple
-  if(NOT APPLE)
+  if(NOT APPLE AND BUILD_X11)
     add_subdirectory(unix)
   endif()
 endif()
@@ -501,7 +504,9 @@ if(BUILD_SIXEL_VIEWER)
   add_subdirectory(vncsixel)
 endif()
 
-add_subdirectory(tests)
+if(BUILD_TESTING)
+  add_subdirectory(tests)
+endif()
 
 
 if(BUILD_VIEWER)
